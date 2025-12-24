@@ -8,12 +8,24 @@ import { FiChevronLeft, FiChevronRight } from "react-icons/fi";
 /* ---------------- TYPES ---------------- */
 type Tier = "bronze" | "silver" | "gold";
 type Plan = { duration: string; price: number };
-type Profile = { id: number; name: string; age: number };
+
+type Profile = {
+  _id: string;
+  name: string;
+  age: number;
+  tier: Tier;
+  imageUrl?: string;
+};
 
 const PROFILES_PER_PAGE = 4;
 
-/* ---------------- DATA ---------------- */
+const tierBadgeStyles: Record<Tier, string> = {
+  bronze: "bg-yellow-700 text-white",
+  silver: "bg-gray-300 text-gray-800",
+  gold: "bg-yellow-400 text-gray-900",
+};
 
+/* ---------------- DATA ---------------- */
 const plans: Record<Tier, Plan[]> = {
   bronze: [
     { duration: "30 mins", price: 199 },
@@ -29,63 +41,71 @@ const plans: Record<Tier, Plan[]> = {
   ],
 };
 
-const profilesByTier: Record<Tier, Profile[]> = {
-  bronze: [
-    { id: 1, name: "Sam Oppa Tour", age: 32 },
-    { id: 2, name: "Raymond Oppa Tour", age: 30 },
-    { id: 3, name: "Jay Oppa Tour", age: 28 },
-    { id: 4, name: "Jake Oppa Tour", age: 29 },
-    { id: 5, name: "Ken Oppa Tour", age: 31 },
-    { id: 6, name: "Ryan Oppa Tour", age: 33 },
-  ],
-  silver: [
-    { id: 7, name: "Daniel Oppa Tour", age: 34 },
-    { id: 8, name: "Chris Oppa Tour", age: 35 },
-  ],
-  gold: [
-    { id: 9, name: "Elite Oppa Tour", age: 38 },
-  ],
-};
-
 export default function HomePage() {
   const router = useRouter();
 
   const [selectedTier, setSelectedTier] = useState<Tier>("bronze");
   const [selectedPlan, setSelectedPlan] = useState<Plan>(plans.bronze[0]);
   const [pageIndex, setPageIndex] = useState(0);
+  const [profiles, setProfiles] = useState<Profile[]>([]);
+  const [loading, setLoading] = useState(true);
 
-  /* ---------------- AUTH GUARD ---------------- */
+  /* ---------------- AUTH + FETCH PROFILES ---------------- */
   useEffect(() => {
-    const user = localStorage.getItem("myshine_user");
-    if (!user) {
+    const userStr = localStorage.getItem("myshine_user");
+    if (!userStr) {
       router.replace("/login");
       return;
     }
 
-    try {
-      const parsed = JSON.parse(user);
-      if (!parsed.loggedIn) {
-        router.replace("/login");
-      }
-    } catch {
-      router.replace("/login");
-    }
+    const user = JSON.parse(userStr);
+
+    fetch(`/api/profiles?userId=${user.id}`)
+      .then((res) => res.json())
+      .then((data) => {
+        if (data.success) {
+          setProfiles(data.profiles);
+        }
+        setLoading(false);
+      })
+      .catch(() => setLoading(false));
   }, [router]);
 
-  /* ---------------- RESET PLAN ON TIER CHANGE ---------------- */
+  /* ---------------- RESET ON TIER CHANGE ---------------- */
   useEffect(() => {
     setPageIndex(0);
     setSelectedPlan(plans[selectedTier][0]);
   }, [selectedTier]);
 
-  const currentProfiles = profilesByTier[selectedTier].slice(
+  /* ---------------- FILTER BY TIER ---------------- */
+  const filteredProfiles = profiles.filter(
+    (profile) => profile.tier === selectedTier
+  );
+
+  const currentProfiles = filteredProfiles.slice(
     pageIndex * PROFILES_PER_PAGE,
     pageIndex * PROFILES_PER_PAGE + PROFILES_PER_PAGE
   );
 
   const totalPages = Math.ceil(
-    profilesByTier[selectedTier].length / PROFILES_PER_PAGE
+    filteredProfiles.length / PROFILES_PER_PAGE
   );
+
+  /* ---------------- BOOK HANDLER (NEW FLOW) ---------------- */
+  const handleBook = (
+    profileId: string,
+    mode: "call" | "chat"
+  ) => {
+    router.push(
+      `/payment?profileId=${profileId}&tier=${selectedTier}&duration=${selectedPlan.duration === "30 mins" ? 30 : 60
+      }&price=${selectedPlan.price}&mode=${mode}`
+    );
+  };
+
+
+  if (loading) {
+    return <p className="p-4 text-sm">Loading profiles...</p>;
+  }
 
   return (
     <>
@@ -99,14 +119,13 @@ export default function HomePage() {
               onClick={() => setSelectedTier(tier)}
               className={`
                 w-14 h-14 rounded-full transition-all duration-300
-                ${
-                  selectedTier === tier
-                    ? tier === "bronze"
-                      ? "bg-gradient-to-br from-yellow-700 to-yellow-500 shadow-lg animate-pulse"
-                      : tier === "silver"
+                ${selectedTier === tier
+                  ? tier === "bronze"
+                    ? "bg-gradient-to-br from-yellow-700 to-yellow-500 shadow-lg animate-pulse"
+                    : tier === "silver"
                       ? "bg-gradient-to-br from-gray-300 to-gray-100 shadow-lg animate-pulse"
                       : "bg-gradient-to-br from-yellow-400 to-yellow-200 shadow-lg animate-pulse"
-                    : "bg-white dark:bg-gray-800 shadow-md hover:scale-105"
+                  : "bg-white dark:bg-gray-800 shadow-md hover:scale-105"
                 }
               `}
             />
@@ -115,104 +134,125 @@ export default function HomePage() {
 
         {/* -------- PLAN CIRCLES -------- */}
         <div className="flex justify-center gap-4 mt-7">
-          {plans[selectedTier].map((plan, index) => (
-            <button
-              key={index}
-              onClick={() => setSelectedPlan(plan)}
-              className={`w-16 h-16 rounded-full
-                flex flex-col items-center justify-center transition-all
-                ${
-                  selectedPlan.price === plan.price
-                    ? "bg-pink-500 text-white shadow-md scale-105"
-                    : "bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 shadow-sm hover:scale-105"
-                }
-              `}
-            >
-              <div className="text-[11px] font-medium leading-tight">
-                {plan.duration}
-              </div>
-              <div className="text-[10px] mt-0.5 leading-tight">
-                ₹{plan.price}
-              </div>
-            </button>
-          ))}
+          {plans[selectedTier].map((plan, index) => {
+            const isSelected = selectedPlan.price === plan.price;
+
+            return (
+              <button
+                key={index}
+                onClick={() => setSelectedPlan(plan)}
+                className={`w-16 h-16 rounded-full flex flex-col items-center justify-center transition-all duration-200
+                  ${isSelected
+                    ? "bg-pink-500 shadow-md scale-105"
+                    : "bg-white dark:bg-gray-800 shadow-sm hover:scale-105"
+                  }`}
+              >
+                <div
+                  className={`text-[11px] font-medium ${isSelected
+                      ? "text-black"
+                      : "text-gray-700 dark:text-gray-300"
+                    }`}
+                >
+                  {plan.duration}
+                </div>
+                <div
+                  className={`text-[10px] ${isSelected
+                      ? "text-black"
+                      : "text-gray-600 dark:text-gray-400"
+                    }`}
+                >
+                  ₹{plan.price}
+                </div>
+              </button>
+            );
+          })}
         </div>
 
         {/* -------- PROFILES -------- */}
         <div className="mt-14 flex items-center justify-center gap-4">
-
-          {/* LEFT ARROW */}
           <button
             disabled={pageIndex === 0}
             onClick={() => setPageIndex((p) => p - 1)}
-            className={`p-2 rounded-full transition
-              ${
-                pageIndex === 0
-                  ? "opacity-30"
-                  : "bg-white dark:bg-gray-800 shadow hover:scale-110"
-              }
-            `}
           >
-            <FiChevronLeft size={20} />
+            <FiChevronLeft />
           </button>
 
-          {/* CARDS */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-8 max-w-3xl">
-            {currentProfiles.map((profile) => (
-              <div
-                key={profile.id}
-                className="
-                  w-[260px]
-                  bg-white dark:bg-gray-800
-                  border border-gray-200 dark:border-gray-700
-                  shadow-sm
-                  transition-all duration-300 ease-out
-                  hover:-translate-y-2 hover:shadow-lg
-                "
-              >
-                <div className="h-[180px] bg-gray-100 dark:bg-gray-700 flex items-center justify-center">
-                  Image
-                </div>
-
-                <div className="py-6 px-4 text-center">
-                  <h3 className="text-[15px] font-medium text-gray-600 dark:text-gray-300">
-                    {profile.name}
-                  </h3>
-
-                  <p className="text-xs text-gray-400 mt-1">
-                    {selectedPlan.duration} &nbsp;|&nbsp; ₹{selectedPlan.price}
-                  </p>
-
-                  <button
-                    className="
-                      mt-4 px-6 py-2
-                      bg-pink-500 text-white
-                      text-xs font-medium
-                      rounded
-                      hover:bg-pink-600
-                      transition
-                    "
-                  >
-                    Book It
-                  </button>
-                </div>
+            {currentProfiles.length === 0 ? (
+              <div className="col-span-full text-center text-sm text-gray-500 py-12">
+                No profiles available in this tier yet.
               </div>
-            ))}
+            ) : (
+              currentProfiles.map((profile) => (
+                <div
+                  key={profile._id}
+                  onClick={() => router.push(`/profile/${profile._id}`)}
+                  className="w-[260px] bg-white dark:bg-gray-800 shadow cursor-pointer hover:scale-[1.02] transition"
+                >
+                  {/* IMAGE */}
+                  <div className="h-[180px] bg-gray-100 dark:bg-gray-700 overflow-hidden">
+                    {profile.imageUrl ? (
+                      <img
+                        src={profile.imageUrl}
+                        alt={profile.name}
+                        className="w-full h-full object-cover"
+                      />
+                    ) : (
+                      <div className="w-full h-full flex items-center justify-center text-gray-400 text-sm">
+                        No Image
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="py-6 px-4 text-center relative">
+                    <span
+                      className={`absolute top-2 right-2 text-[10px] px-2 py-0.5 rounded-full ${tierBadgeStyles[profile.tier]
+                        }`}
+                    >
+                      {profile.tier.toUpperCase()}
+                    </span>
+
+                    <h3 className="text-[15px] font-medium text-gray-600 dark:text-gray-300">
+                      {profile.name}
+                    </h3>
+
+                    <p className="text-xs text-gray-400">
+                      {selectedPlan.duration} | ₹{selectedPlan.price}
+                    </p>
+
+                    <div className="mt-4 flex gap-2 justify-center">
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleBook(profile._id, "call");
+                        }}
+                        className="px-4 py-2 bg-pink-500 text-white text-xs rounded"
+                      >
+                        Connect
+                      </button>
+
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          router.push(`/chat/${profile._id}`);
+                        }}
+                        className="px-4 py-2 border border-pink-500 text-pink-500 text-xs rounded hover:bg-pink-50"
+                      >
+                        Chat
+                      </button>
+                    </div>
+
+                  </div>
+                </div>
+              ))
+            )}
           </div>
 
-          {/* RIGHT ARROW */}
           <button
             disabled={pageIndex >= totalPages - 1}
             onClick={() => setPageIndex((p) => p + 1)}
-            className={`p-2 rounded-full transition
-              ${
-                pageIndex >= totalPages - 1
-                  ? "opacity-30"
-                  : "bg-white dark:bg-gray-800 shadow hover:scale-110"
-              }
-            `}
           >
-            <FiChevronRight size={20} />
+            <FiChevronRight />
           </button>
         </div>
       </div>

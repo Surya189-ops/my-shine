@@ -15,7 +15,7 @@ export async function POST(req: Request) {
   const otp = "123456";
 
   // In real app: store OTP in DB / cache
-  console.log(`OTP for ${phone}: ${otp}`);
+  
 
   return NextResponse.json({
     success: true,

@@ -16,22 +16,33 @@ const ProfileSchema = new Schema(
       type: Number,
       required: true,
     },
-    bio: {
-      type: String,
-    },
+    bio: String,
+
     gender: {
       type: String,
       enum: ["male", "female", "other"],
       required: true,
     },
+
+    tier: {
+      type: String,
+      enum: ["bronze", "silver", "gold"],
+    },
+
     isCameraVerified: {
       type: Boolean,
       default: false,
     },
+
+    imageUrl: {
+      type: String,
+      default: "",
+    },
+
+    
   },
   { timestamps: true }
 );
 
 const Profile = models.Profile || model("Profile", ProfileSchema);
-
 export default Profile;

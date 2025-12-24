@@ -1,8 +1,10 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { useRouter } from "next/navigation";
 import BottomNav from "../components/BottomNav";
+
+type Tier = "bronze" | "silver" | "gold" | "";
 
 export default function ProfilePage() {
   const router = useRouter();
@@ -11,23 +13,32 @@ export default function ProfilePage() {
   const [age, setAge] = useState("");
   const [bio, setBio] = useState("");
   const [gender, setGender] = useState("");
+  const [tier, setTier] = useState<Tier>("");
+
   const [isVerified, setIsVerified] = useState(false);
   const [loading, setLoading] = useState(false);
 
-  /* ---------------- USER FROM LOCAL STORAGE ---------------- */
+  const [profile, setProfile] = useState<any>(null);
+
+  const [imagePreview, setImagePreview] = useState("");
+  const [uploading, setUploading] = useState(false);
+
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+
+  /* ---------------- USER ---------------- */
   const user =
     typeof window !== "undefined"
       ? JSON.parse(localStorage.getItem("myshine_user") || "{}")
       : null;
 
-  /* ---------------- AUTH GUARD ---------------- */
+  /* ---------------- AUTH ---------------- */
   useEffect(() => {
     if (!user?.loggedIn) {
       router.replace("/login");
     }
   }, [router]);
 
-  /* ---------------- LOAD PROFILE FROM DB ---------------- */
+  /* ---------------- LOAD PROFILE ---------------- */
   useEffect(() => {
     if (!user?.id) return;
 
@@ -35,26 +46,76 @@ export default function ProfilePage() {
       .then((res) => res.json())
       .then((data) => {
         if (data.success && data.profile) {
+          setProfile(data.profile);
           setName(data.profile.name || "");
           setAge(data.profile.age?.toString() || "");
           setBio(data.profile.bio || "");
           setGender(data.profile.gender || "");
+          setTier(data.profile.tier || "");
           setIsVerified(data.profile.isCameraVerified || false);
         }
       });
   }, []);
 
-  /* ---------------- VERIFY (FAKE CAMERA) ---------------- */
-  const handleVerify = () => {
-    setTimeout(() => {
-      setIsVerified(true);
-    }, 500);
+  /* ---------------- IMAGE PREVIEW ---------------- */
+  const handleImageSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onloadend = () => {
+      setImagePreview(reader.result as string);
+    };
+    reader.readAsDataURL(file);
   };
 
-  /* ---------------- SAVE PROFILE TO DB ---------------- */
+  /* ---------------- IMAGE UPLOAD ---------------- */
+  const handleImageUpload = async () => {
+    if (!imagePreview || !profile?._id) return;
+
+    try {
+      setUploading(true);
+
+      const res = await fetch("/api/profile/upload-image", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          profileId: profile._id,
+          imageBase64: imagePreview,
+        }),
+      });
+
+      const data = await res.json();
+
+      if (data.success) {
+        setProfile(data.profile);
+        setImagePreview("");
+        if (fileInputRef.current) fileInputRef.current.value = "";
+        alert("Profile image saved");
+      } else {
+        alert("Upload failed");
+      }
+    } catch {
+      alert("Something went wrong");
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  /* ---------------- VERIFY ---------------- */
+  const handleVerify = () => {
+    setTimeout(() => setIsVerified(true), 500);
+  };
+
+  /* ---------------- SAVE PROFILE ---------------- */
   const saveProfile = async () => {
     if (!name || !age || !gender) {
       alert("Please fill all required fields");
+      return;
+    }
+
+    if (gender === "male" && !tier) {
+      alert("Please select a tier");
       return;
     }
 
@@ -70,6 +131,7 @@ export default function ProfilePage() {
           age: Number(age),
           bio,
           gender,
+          tier: gender === "male" ? tier : null,
           isCameraVerified: isVerified,
         }),
       });
@@ -94,11 +156,27 @@ export default function ProfilePage() {
         <div className="w-full max-w-md md:max-w-xl bg-white rounded-xl shadow mt-6 p-6 md:p-8">
 
           {/* PROFILE IMAGE */}
-          <div className="flex justify-center mb-6">
+          <div className="flex flex-col items-center mb-6">
             <div className="relative">
-              <div className="w-32 h-32 rounded-full bg-gray-200 flex items-center justify-center text-gray-500">
-                Profile Pic
+              <div className="w-32 h-32 rounded-full bg-gray-200 overflow-hidden flex items-center justify-center text-gray-500">
+                {imagePreview || profile?.imageUrl ? (
+                  <img
+                    src={imagePreview || profile.imageUrl}
+                    alt="Profile"
+                    className="w-full h-full object-cover"
+                  />
+                ) : (
+                  <span>Profile Pic</span>
+                )}
               </div>
+
+              <input
+                type="file"
+                accept="image/*"
+                ref={fileInputRef}
+                onChange={handleImageSelect}
+                className="hidden"
+              />
 
               {isVerified && (
                 <div className="absolute bottom-1 right-1 bg-green-500 text-white w-6 h-6 rounded-full flex items-center justify-center text-sm">
@@ -106,10 +184,24 @@ export default function ProfilePage() {
                 </div>
               )}
 
-              <button className="absolute bottom-0 left-1/2 -translate-x-1/2 bg-pink-500 text-white text-xs px-3 py-1 rounded-full">
+              <button
+                type="button"
+                onClick={() => fileInputRef.current?.click()}
+                className="absolute bottom-0 left-1/2 -translate-x-1/2 bg-pink-500 text-white text-xs px-3 py-1 rounded-full"
+              >
                 Edit
               </button>
             </div>
+
+            {imagePreview && (
+              <button
+                onClick={handleImageUpload}
+                disabled={uploading}
+                className="mt-3 w-full bg-green-500 text-white text-xs py-2 rounded disabled:opacity-50"
+              >
+                {uploading ? "Uploading..." : "Save Photo"}
+              </button>
+            )}
           </div>
 
           {/* NAME */}
@@ -118,8 +210,7 @@ export default function ProfilePage() {
             <input
               value={name}
               onChange={(e) => setName(e.target.value)}
-              placeholder="Enter your name"
-              className="w-full mt-1 p-3 border rounded-lg text-gray-700 focus:ring-2 focus:ring-pink-400 outline-none"
+              className="w-full mt-1 p-3 border rounded-lg"
             />
           </div>
 
@@ -130,8 +221,7 @@ export default function ProfilePage() {
               type="number"
               value={age}
               onChange={(e) => setAge(e.target.value)}
-              placeholder="Enter your age"
-              className="w-full mt-1 p-3 border rounded-lg text-gray-700 focus:ring-2 focus:ring-pink-400 outline-none"
+              className="w-full mt-1 p-3 border rounded-lg"
             />
           </div>
 
@@ -142,18 +232,20 @@ export default function ProfilePage() {
               rows={4}
               value={bio}
               onChange={(e) => setBio(e.target.value)}
-              placeholder="Write something about yourself..."
-              className="w-full mt-1 p-3 border rounded-lg text-gray-700 resize-none focus:ring-2 focus:ring-pink-400 outline-none"
+              className="w-full mt-1 p-3 border rounded-lg resize-none"
             />
           </div>
 
           {/* GENDER */}
-          <div className="mb-6">
+          <div className="mb-4">
             <label className="text-sm text-gray-600">Gender</label>
             <select
               value={gender}
-              onChange={(e) => setGender(e.target.value)}
-              className="w-full mt-1 p-3 border rounded-lg text-gray-700 focus:ring-2 focus:ring-pink-400 outline-none"
+              onChange={(e) => {
+                setGender(e.target.value);
+                if (e.target.value !== "male") setTier("");
+              }}
+              className="w-full mt-1 p-3 border rounded-lg"
             >
               <option value="">Select gender</option>
               <option value="male">Male</option>
@@ -162,32 +254,38 @@ export default function ProfilePage() {
             </select>
           </div>
 
-          {/* VERIFY / APPLY */}
+          {/* TIER */}
           {gender === "male" && (
             <div className="mb-6">
-              {!isVerified ? (
-                <button
-                  onClick={handleVerify}
-                  className="w-full py-3 border-2 border-pink-500 text-pink-500 rounded-lg font-semibold hover:bg-pink-50 transition"
-                >
-                  Verify with Camera
-                </button>
-              ) : (
-                <button
-                  onClick={() => router.push("/")}
-                  className="w-full py-3 bg-pink-500 text-white rounded-lg font-semibold hover:bg-pink-600 transition"
-                >
-                  Apply Connect to Home page
-                </button>
-              )}
+              <label className="text-sm text-gray-600">Tier</label>
+              <select
+                value={tier}
+                onChange={(e) => setTier(e.target.value as Tier)}
+                className="w-full mt-1 p-3 border rounded-lg"
+              >
+                <option value="">Select tier</option>
+                <option value="bronze">Bronze</option>
+                <option value="silver">Silver</option>
+                <option value="gold">Gold</option>
+              </select>
             </div>
           )}
 
-          {/* SAVE PROFILE */}
+          {/* VERIFY */}
+          {gender === "male" && !isVerified && (
+            <button
+              onClick={handleVerify}
+              className="w-full mb-4 py-3 border-2 border-pink-500 text-pink-500 rounded-lg font-semibold"
+            >
+              Verify with Camera
+            </button>
+          )}
+
+          {/* SAVE */}
           <button
             onClick={saveProfile}
             disabled={loading}
-            className="w-full py-3 bg-pink-500 text-white rounded-lg font-semibold hover:bg-pink-600 transition disabled:opacity-50"
+            className="w-full py-3 bg-pink-500 text-white rounded-lg font-semibold disabled:opacity-50"
           >
             {loading ? "Saving..." : "Save Profile"}
           </button>

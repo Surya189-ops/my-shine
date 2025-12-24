@@ -27,4 +27,10 @@ async function connectDB() {
   return cached.conn;
 }
 
+
 export default connectDB;
+
+// 🔹 expose server for socket.io
+// @ts-ignore
+global._socketServer = global._socketServer || null;
+
