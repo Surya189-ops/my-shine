@@ -5,7 +5,6 @@ import { useRouter } from "next/navigation";
 import BottomNav from "./components/BottomNav";
 import { FiChevronLeft, FiChevronRight } from "react-icons/fi";
 
-/* ---------------- TYPES ---------------- */
 type Tier = "bronze" | "silver" | "gold";
 type Plan = { duration: string; price: number };
 
@@ -25,7 +24,6 @@ const tierBadgeStyles: Record<Tier, string> = {
   gold: "bg-yellow-400 text-gray-900",
 };
 
-/* ---------------- DATA ---------------- */
 const plans: Record<Tier, Plan[]> = {
   bronze: [
     { duration: "30 mins", price: 199 },
@@ -50,7 +48,6 @@ export default function HomePage() {
   const [profiles, setProfiles] = useState<Profile[]>([]);
   const [loading, setLoading] = useState(true);
 
-  /* ---------------- AUTH + FETCH ---------------- */
   useEffect(() => {
     const userStr = localStorage.getItem("myshine_user");
     if (!userStr) {
@@ -69,19 +66,13 @@ export default function HomePage() {
       .catch(() => setLoading(false));
   }, [router]);
 
-  /* ---------------- RESET ON TIER CHANGE ---------------- */
   useEffect(() => {
     setPageIndex(0);
     setSelectedPlan(plans[selectedTier][0]);
   }, [selectedTier]);
 
-  /* ---------------- FILTER + PAGINATION ---------------- */
   const filteredProfiles = profiles.filter(
-    (profile) => profile.tier === selectedTier
-  );
-
-  const totalPages = Math.ceil(
-    filteredProfiles.length / PROFILES_PER_PAGE
+    (p) => p.tier === selectedTier
   );
 
   const currentProfiles = filteredProfiles.slice(
@@ -89,10 +80,9 @@ export default function HomePage() {
     pageIndex * PROFILES_PER_PAGE + PROFILES_PER_PAGE
   );
 
-  /* ---------------- BOOK ---------------- */
-  const handleBook = (profileId: string) => {
-    router.push(`/payment?profileId=${profileId}`);
-  };
+  const totalPages = Math.ceil(
+    filteredProfiles.length / PROFILES_PER_PAGE
+  );
 
   if (loading) {
     return <p className="p-4 text-sm">Loading profiles...</p>;
@@ -102,132 +92,99 @@ export default function HomePage() {
     <>
       <div className="min-h-screen bg-gradient-to-b from-pink-50 to-white px-4 pb-28">
 
-        {/* -------- TIER SELECT -------- */}
+        {/* TIER SELECT */}
         <div className="flex justify-center gap-5 pt-6">
           {(["bronze", "silver", "gold"] as const).map((tier) => (
             <button
               key={tier}
               onClick={() => setSelectedTier(tier)}
-              className={`w-14 h-14 rounded-full transition-all
-                ${selectedTier === tier
-                  ? "bg-pink-500 shadow-lg scale-105"
-                  : "bg-white shadow"
-                }`}
+              className={`w-14 h-14 rounded-full ${
+                selectedTier === tier
+                  ? "bg-pink-500 scale-105"
+                  : "bg-white"
+              }`}
             />
           ))}
         </div>
 
-        {/* -------- PLAN SELECT -------- */}
+        {/* PLANS */}
         <div className="flex justify-center gap-4 mt-6">
-          {plans[selectedTier].map((plan) => {
-            const active = selectedPlan.price === plan.price;
-            return (
-              <button
-                key={plan.price}
-                onClick={() => setSelectedPlan(plan)}
-                className={`w-16 h-16 rounded-full flex flex-col items-center justify-center
-                  ${active ? "bg-pink-500 text-white" : "bg-white shadow"}
-                `}
-              >
-                <span className="text-[11px]">{plan.duration}</span>
-                <span className="text-[10px]">₹{plan.price}</span>
-              </button>
-            );
-          })}
+          {plans[selectedTier].map((plan, i) => (
+            <button
+              key={i}
+              onClick={() => setSelectedPlan(plan)}
+              className={`w-16 h-16 rounded-full text-xs ${
+                selectedPlan.price === plan.price
+                  ? "bg-pink-500 text-white"
+                  : "bg-white"
+              }`}
+            >
+              {plan.duration}
+              <br />₹{plan.price}
+            </button>
+          ))}
         </div>
 
-        {/* -------- PROFILES GRID (2×2 MOBILE) -------- */}
-        <div className="mt-10">
-          <div className="grid grid-cols-2 md:grid-cols-2 gap-4">
-            {currentProfiles.length === 0 ? (
-              <div className="col-span-2 text-center text-sm text-gray-500 py-12">
-                No profiles available.
-              </div>
-            ) : (
-              currentProfiles.map((profile) => (
-                <div
-                  key={profile._id}
-                  onClick={() => router.push(`/profile/${profile._id}`)}
-                  className="bg-white shadow rounded-lg overflow-hidden cursor-pointer"
-                >
-                  {/* IMAGE */}
-                  <div className="h-[150px] bg-gray-100">
-                    {profile.imageUrl ? (
-                      <img
-                        src={profile.imageUrl}
-                        alt={profile.name}
-                        className="w-full h-full object-cover"
-                      />
-                    ) : (
-                      <div className="w-full h-full flex items-center justify-center text-xs text-gray-400">
-                        No Image
-                      </div>
-                    )}
-                  </div>
+        {/* PROFILES GRID */}
+        <div className="mt-10 relative">
 
-                  {/* INFO */}
-                  <div className="p-3 text-center relative">
-                    <span
-                      className={`absolute top-2 right-2 text-[10px] px-2 py-0.5 rounded-full ${tierBadgeStyles[profile.tier]}`}
-                    >
-                      {profile.tier.toUpperCase()}
-                    </span>
+          {/* LEFT ARROW */}
+          <button
+            disabled={pageIndex === 0}
+            onClick={() => setPageIndex((p) => p - 1)}
+            className="absolute left-0 top-1/2 -translate-y-1/2 z-10"
+          >
+            <FiChevronLeft size={22} />
+          </button>
 
-                    <h3 className="text-sm font-medium">
-                      {profile.name}
-                    </h3>
-
-                    <p className="text-[11px] text-gray-400">
-                      {selectedPlan.duration} • ₹{selectedPlan.price}
-                    </p>
-
-                    <div className="mt-3 flex gap-2 justify-center">
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          handleBook(profile._id);
-                        }}
-                        className="px-3 py-1.5 bg-pink-500 text-white text-xs rounded"
-                      >
-                        Book
-                      </button>
-
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          router.push(`/chat/${profile._id}`);
-                        }}
-                        className="px-3 py-1.5 border border-pink-500 text-pink-500 text-xs rounded"
-                      >
-                        Chat
-                      </button>
+          {/* GRID */}
+          <div className="grid grid-cols-2 gap-4 px-6">
+            {currentProfiles.map((profile) => (
+              <div
+                key={profile._id}
+                className="bg-white rounded-xl shadow overflow-hidden"
+                onClick={() => router.push(`/profile/${profile._id}`)}
+              >
+                <div className="h-32 bg-gray-100">
+                  {profile.imageUrl ? (
+                    <img
+                      src={profile.imageUrl}
+                      className="w-full h-full object-cover"
+                    />
+                  ) : (
+                    <div className="h-full flex items-center justify-center text-xs text-gray-400">
+                      No Image
                     </div>
-                  </div>
+                  )}
                 </div>
-              ))
-            )}
+
+                <div className="p-3 text-center">
+                  <span
+                    className={`text-[10px] px-2 py-0.5 rounded-full ${tierBadgeStyles[profile.tier]}`}
+                  >
+                    {profile.tier.toUpperCase()}
+                  </span>
+
+                  <p className="text-sm font-medium mt-1">
+                    {profile.name}
+                  </p>
+
+                  <p className="text-xs text-gray-500">
+                    ₹{selectedPlan.price}
+                  </p>
+                </div>
+              </div>
+            ))}
           </div>
 
-          {/* -------- PAGINATION -------- */}
-          {totalPages > 1 && (
-            <div className="flex justify-center gap-6 mt-6">
-              <button
-                disabled={pageIndex === 0}
-                onClick={() => setPageIndex((p) => p - 1)}
-                className="p-2 rounded-full bg-white shadow disabled:opacity-40"
-              >
-                <FiChevronLeft />
-              </button>
-
-              <button
-                disabled={pageIndex >= totalPages - 1}
-                onClick={() => setPageIndex((p) => p + 1)}
-                className="p-2 rounded-full bg-white shadow disabled:opacity-40"
-              >
-                <FiChevronRight />
-              </button>
-            </div>
-          )}
+          {/* RIGHT ARROW */}
+          <button
+            disabled={pageIndex >= totalPages - 1}
+            onClick={() => setPageIndex((p) => p + 1)}
+            className="absolute right-0 top-1/2 -translate-y-1/2 z-10"
+          >
+            <FiChevronRight size={22} />
+          </button>
         </div>
       </div>
 
