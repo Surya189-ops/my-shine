@@ -50,7 +50,7 @@ export default function HomePage() {
   const [profiles, setProfiles] = useState<Profile[]>([]);
   const [loading, setLoading] = useState(true);
 
-  /* ---------------- AUTH + FETCH PROFILES ---------------- */
+  /* ---------------- AUTH + FETCH ---------------- */
   useEffect(() => {
     const userStr = localStorage.getItem("myshine_user");
     if (!userStr) {
@@ -63,9 +63,7 @@ export default function HomePage() {
     fetch(`/api/profiles?userId=${user.id}`)
       .then((res) => res.json())
       .then((data) => {
-        if (data.success) {
-          setProfiles(data.profiles);
-        }
+        if (data.success) setProfiles(data.profiles);
         setLoading(false);
       })
       .catch(() => setLoading(false));
@@ -77,9 +75,13 @@ export default function HomePage() {
     setSelectedPlan(plans[selectedTier][0]);
   }, [selectedTier]);
 
-  /* ---------------- FILTER BY TIER ---------------- */
+  /* ---------------- FILTER + PAGINATION ---------------- */
   const filteredProfiles = profiles.filter(
     (profile) => profile.tier === selectedTier
+  );
+
+  const totalPages = Math.ceil(
+    filteredProfiles.length / PROFILES_PER_PAGE
   );
 
   const currentProfiles = filteredProfiles.slice(
@@ -87,21 +89,10 @@ export default function HomePage() {
     pageIndex * PROFILES_PER_PAGE + PROFILES_PER_PAGE
   );
 
-  const totalPages = Math.ceil(
-    filteredProfiles.length / PROFILES_PER_PAGE
-  );
-
-  /* ---------------- BOOK HANDLER (NEW FLOW) ---------------- */
-  const handleBook = (
-    profileId: string,
-    mode: "call" | "chat"
-  ) => {
-    router.push(
-      `/payment?profileId=${profileId}&tier=${selectedTier}&duration=${selectedPlan.duration === "30 mins" ? 30 : 60
-      }&price=${selectedPlan.price}&mode=${mode}`
-    );
+  /* ---------------- BOOK ---------------- */
+  const handleBook = (profileId: string) => {
+    router.push(`/payment?profileId=${profileId}`);
   };
-
 
   if (loading) {
     return <p className="p-4 text-sm">Loading profiles...</p>;
@@ -109,88 +100,58 @@ export default function HomePage() {
 
   return (
     <>
-      <div className="min-h-screen bg-gradient-to-b from-pink-50 to-white dark:from-gray-900 dark:to-gray-800 px-4 pb-28">
+      <div className="min-h-screen bg-gradient-to-b from-pink-50 to-white px-4 pb-28">
 
-        {/* -------- TIER CIRCLES -------- */}
+        {/* -------- TIER SELECT -------- */}
         <div className="flex justify-center gap-5 pt-6">
           {(["bronze", "silver", "gold"] as const).map((tier) => (
             <button
               key={tier}
               onClick={() => setSelectedTier(tier)}
-              className={`
-                w-14 h-14 rounded-full transition-all duration-300
+              className={`w-14 h-14 rounded-full transition-all
                 ${selectedTier === tier
-                  ? tier === "bronze"
-                    ? "bg-gradient-to-br from-yellow-700 to-yellow-500 shadow-lg animate-pulse"
-                    : tier === "silver"
-                      ? "bg-gradient-to-br from-gray-300 to-gray-100 shadow-lg animate-pulse"
-                      : "bg-gradient-to-br from-yellow-400 to-yellow-200 shadow-lg animate-pulse"
-                  : "bg-white dark:bg-gray-800 shadow-md hover:scale-105"
-                }
-              `}
+                  ? "bg-pink-500 shadow-lg scale-105"
+                  : "bg-white shadow"
+                }`}
             />
           ))}
         </div>
 
-        {/* -------- PLAN CIRCLES -------- */}
-        <div className="flex justify-center gap-4 mt-7">
-          {plans[selectedTier].map((plan, index) => {
-            const isSelected = selectedPlan.price === plan.price;
-
+        {/* -------- PLAN SELECT -------- */}
+        <div className="flex justify-center gap-4 mt-6">
+          {plans[selectedTier].map((plan) => {
+            const active = selectedPlan.price === plan.price;
             return (
               <button
-                key={index}
+                key={plan.price}
                 onClick={() => setSelectedPlan(plan)}
-                className={`w-16 h-16 rounded-full flex flex-col items-center justify-center transition-all duration-200
-                  ${isSelected
-                    ? "bg-pink-500 shadow-md scale-105"
-                    : "bg-white dark:bg-gray-800 shadow-sm hover:scale-105"
-                  }`}
+                className={`w-16 h-16 rounded-full flex flex-col items-center justify-center
+                  ${active ? "bg-pink-500 text-white" : "bg-white shadow"}
+                `}
               >
-                <div
-                  className={`text-[11px] font-medium ${isSelected
-                      ? "text-black"
-                      : "text-gray-700 dark:text-gray-300"
-                    }`}
-                >
-                  {plan.duration}
-                </div>
-                <div
-                  className={`text-[10px] ${isSelected
-                      ? "text-black"
-                      : "text-gray-600 dark:text-gray-400"
-                    }`}
-                >
-                  ₹{plan.price}
-                </div>
+                <span className="text-[11px]">{plan.duration}</span>
+                <span className="text-[10px]">₹{plan.price}</span>
               </button>
             );
           })}
         </div>
 
-        {/* -------- PROFILES -------- */}
-        <div className="mt-14 flex items-center justify-center gap-4">
-          <button
-            disabled={pageIndex === 0}
-            onClick={() => setPageIndex((p) => p - 1)}
-          >
-            <FiChevronLeft />
-          </button>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-8 max-w-3xl">
+        {/* -------- PROFILES GRID (2×2 MOBILE) -------- */}
+        <div className="mt-10">
+          <div className="grid grid-cols-2 md:grid-cols-2 gap-4">
             {currentProfiles.length === 0 ? (
-              <div className="col-span-full text-center text-sm text-gray-500 py-12">
-                No profiles available in this tier yet.
+              <div className="col-span-2 text-center text-sm text-gray-500 py-12">
+                No profiles available.
               </div>
             ) : (
               currentProfiles.map((profile) => (
                 <div
                   key={profile._id}
                   onClick={() => router.push(`/profile/${profile._id}`)}
-                  className="w-[260px] bg-white dark:bg-gray-800 shadow cursor-pointer hover:scale-[1.02] transition"
+                  className="bg-white shadow rounded-lg overflow-hidden cursor-pointer"
                 >
                   {/* IMAGE */}
-                  <div className="h-[180px] bg-gray-100 dark:bg-gray-700 overflow-hidden">
+                  <div className="h-[150px] bg-gray-100">
                     {profile.imageUrl ? (
                       <img
                         src={profile.imageUrl}
@@ -198,37 +159,37 @@ export default function HomePage() {
                         className="w-full h-full object-cover"
                       />
                     ) : (
-                      <div className="w-full h-full flex items-center justify-center text-gray-400 text-sm">
+                      <div className="w-full h-full flex items-center justify-center text-xs text-gray-400">
                         No Image
                       </div>
                     )}
                   </div>
 
-                  <div className="py-6 px-4 text-center relative">
+                  {/* INFO */}
+                  <div className="p-3 text-center relative">
                     <span
-                      className={`absolute top-2 right-2 text-[10px] px-2 py-0.5 rounded-full ${tierBadgeStyles[profile.tier]
-                        }`}
+                      className={`absolute top-2 right-2 text-[10px] px-2 py-0.5 rounded-full ${tierBadgeStyles[profile.tier]}`}
                     >
                       {profile.tier.toUpperCase()}
                     </span>
 
-                    <h3 className="text-[15px] font-medium text-gray-600 dark:text-gray-300">
+                    <h3 className="text-sm font-medium">
                       {profile.name}
                     </h3>
 
-                    <p className="text-xs text-gray-400">
-                      {selectedPlan.duration} | ₹{selectedPlan.price}
+                    <p className="text-[11px] text-gray-400">
+                      {selectedPlan.duration} • ₹{selectedPlan.price}
                     </p>
 
-                    <div className="mt-4 flex gap-2 justify-center">
+                    <div className="mt-3 flex gap-2 justify-center">
                       <button
                         onClick={(e) => {
                           e.stopPropagation();
-                          handleBook(profile._id, "call");
+                          handleBook(profile._id);
                         }}
-                        className="px-4 py-2 bg-pink-500 text-white text-xs rounded"
+                        className="px-3 py-1.5 bg-pink-500 text-white text-xs rounded"
                       >
-                        Connect
+                        Book
                       </button>
 
                       <button
@@ -236,24 +197,37 @@ export default function HomePage() {
                           e.stopPropagation();
                           router.push(`/chat/${profile._id}`);
                         }}
-                        className="px-4 py-2 border border-pink-500 text-pink-500 text-xs rounded hover:bg-pink-50"
+                        className="px-3 py-1.5 border border-pink-500 text-pink-500 text-xs rounded"
                       >
                         Chat
                       </button>
                     </div>
-
                   </div>
                 </div>
               ))
             )}
           </div>
 
-          <button
-            disabled={pageIndex >= totalPages - 1}
-            onClick={() => setPageIndex((p) => p + 1)}
-          >
-            <FiChevronRight />
-          </button>
+          {/* -------- PAGINATION -------- */}
+          {totalPages > 1 && (
+            <div className="flex justify-center gap-6 mt-6">
+              <button
+                disabled={pageIndex === 0}
+                onClick={() => setPageIndex((p) => p - 1)}
+                className="p-2 rounded-full bg-white shadow disabled:opacity-40"
+              >
+                <FiChevronLeft />
+              </button>
+
+              <button
+                disabled={pageIndex >= totalPages - 1}
+                onClick={() => setPageIndex((p) => p + 1)}
+                className="p-2 rounded-full bg-white shadow disabled:opacity-40"
+              >
+                <FiChevronRight />
+              </button>
+            </div>
+          )}
         </div>
       </div>
 
