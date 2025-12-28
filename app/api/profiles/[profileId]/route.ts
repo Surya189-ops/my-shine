@@ -3,22 +3,22 @@ import connectDB from "@/lib/mongodb";
 import Profile from "@/models/Profile";
 
 export async function GET(
-  req: NextRequest,
+  request: NextRequest,
   { params }: { params: { profileId: string } }
 ) {
   try {
+    await connectDB();
+
     const { profileId } = params;
 
     if (!profileId) {
       return NextResponse.json(
-        { success: false, message: "Profile ID required" },
+        { success: false, message: "Profile ID missing" },
         { status: 400 }
       );
     }
 
-    await connectDB();
-
-    const profile = await Profile.findById(profileId);
+    const profile = await Profile.findById(profileId).lean();
 
     if (!profile) {
       return NextResponse.json(
@@ -27,23 +27,11 @@ export async function GET(
       );
     }
 
-    return NextResponse.json({
-      success: true,
-      profile: {
-        _id: profile._id.toString(),
-        name: profile.name,
-        age: profile.age,
-        bio: profile.bio,
-        tier: profile.tier,
-        gender: profile.gender,
-        country: profile.country,
-        imageUrl: profile.imageUrl,
-      },
-    });
+    return NextResponse.json({ success: true, profile });
   } catch (error) {
-    console.error("Error fetching profile:", error);
+    console.error("Fetch profile error:", error);
     return NextResponse.json(
-      { success: false, message: "Server error" },
+      { success: false, message: "Failed to fetch profile" },
       { status: 500 }
     );
   }
