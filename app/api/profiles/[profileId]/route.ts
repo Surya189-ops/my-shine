@@ -4,12 +4,13 @@ import Profile from "@/models/Profile";
 
 export async function GET(
   request: NextRequest,
-  { params }: { params: { profileId: string } }
+  context: { params: Promise<{ profileId: string }> }
 ) {
   try {
     await connectDB();
 
-    const { profileId } = params;
+    // ✅ Next.js 16 requires awaiting params
+    const { profileId } = await context.params;
 
     if (!profileId) {
       return NextResponse.json(
