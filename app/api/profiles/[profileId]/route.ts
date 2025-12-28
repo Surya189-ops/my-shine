@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import dbConnect from "@/lib/dbConnect";
+import connectDB from "@/lib/mongodb";
 import Profile from "@/models/Profile";
 
 export async function GET(
@@ -16,7 +16,7 @@ export async function GET(
       );
     }
 
-    await dbConnect();
+    await connectDB();
 
     const profile = await Profile.findById(profileId);
 
