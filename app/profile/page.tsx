@@ -114,10 +114,11 @@ export default function ProfilePage() {
       return;
     }
 
-    if (gender === "male" && !tier) {
+    if (!tier) {
       alert("Please select a tier");
       return;
     }
+
 
     setLoading(true);
 
@@ -131,16 +132,21 @@ export default function ProfilePage() {
           age: Number(age),
           bio,
           gender,
-          tier: gender === "male" ? tier : null,
+          tier, // ALWAYS send tier
           isCameraVerified: isVerified,
         }),
+
       });
 
       const data = await res.json();
 
       if (data.success) {
+        // ✅ STORE PROFILE FOR NOTIFICATIONS
+        localStorage.setItem("myshine_profile", JSON.stringify(data.profile));
+
         alert("Profile saved successfully");
-      } else {
+      }
+      else {
         alert("Failed to save profile");
       }
     } catch {
@@ -255,7 +261,7 @@ export default function ProfilePage() {
           </div>
 
           {/* TIER */}
-          {gender === "male" && (
+          {gender && (
             <div className="mb-6">
               <label className="text-sm text-gray-600">Tier</label>
               <select

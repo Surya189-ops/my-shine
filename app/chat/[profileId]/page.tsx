@@ -37,6 +37,7 @@ export default function ChatPage() {
 
   const socketRef = useRef<Socket | null>(null);
   const bottomRef = useRef<HTMLDivElement | null>(null);
+  const inputRef = useRef<HTMLInputElement | null>(null); // 🔑 KEY FIX
 
   /* -------- AUTH GUARD -------- */
   useEffect(() => {
@@ -110,7 +111,7 @@ export default function ChatPage() {
       });
   }, [profileId]);
 
-  /* -------- CHECK CHAT ACCESS + TIMER -------- */
+  /* -------- CHECK CHAT ACCESS -------- */
   useEffect(() => {
     fetch("/api/bookings/cleanup", { method: "POST" });
 
@@ -185,7 +186,7 @@ export default function ChatPage() {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
 
-  /* -------- SEND MESSAGE -------- */
+  /* -------- SEND MESSAGE (FIXED) -------- */
   const handleSend = async () => {
     if (!newMessage.trim() || !canChat) return;
 
@@ -193,6 +194,10 @@ export default function ChatPage() {
     if (!userStr) return;
 
     const user = JSON.parse(userStr);
+    const text = newMessage;
+
+    setNewMessage("");               // clear input
+    inputRef.current?.focus();       // 🔥 KEEP KEYBOARD OPEN
 
     const res = await fetch("/api/chat", {
       method: "POST",
@@ -200,7 +205,7 @@ export default function ChatPage() {
       body: JSON.stringify({
         senderId: user.id,
         receiverId: profileId,
-        text: newMessage,
+        text,
       }),
     });
 
@@ -222,8 +227,6 @@ export default function ChatPage() {
         text: data.message.text,
         senderId: user.id,
       });
-
-      setNewMessage("");
     }
   };
 
@@ -231,13 +234,6 @@ export default function ChatPage() {
     const m = Math.floor(s / 60);
     const sec = s % 60;
     return `${m}:${sec.toString().padStart(2, "0")}`;
-  };
-
-  const formatLastSeen = (ts: number) => {
-    const mins = Math.floor((Date.now() - ts) / 60000);
-    if (mins <= 0) return "just now";
-    if (mins === 1) return "1 min ago";
-    return `${mins} min ago`;
   };
 
   return (
@@ -258,15 +254,7 @@ export default function ChatPage() {
           <div>
             <p className="text-sm font-semibold">{profile?.name}</p>
             <p className="text-xs text-gray-400">
-              {!canChat
-                ? "Chat locked"
-                : isTyping
-                ? "typing…"
-                : isOnline
-                ? "Online"
-                : lastSeen
-                ? `Last seen ${formatLastSeen(lastSeen)}`
-                : "Offline"}
+              {isTyping ? "typing…" : isOnline ? "Online" : "Offline"}
             </p>
           </div>
         </div>
@@ -281,12 +269,6 @@ export default function ChatPage() {
 
       {/* MESSAGES */}
       <div className="flex-1 overflow-y-auto px-4 py-3 space-y-3">
-        {messages.length === 0 && canChat && (
-          <p className="text-center text-sm text-gray-400 mt-6">
-            Say hi 👋 and start the conversation
-          </p>
-        )}
-
         {messages.map((msg) => (
           <div
             key={msg.id}
@@ -308,25 +290,26 @@ export default function ChatPage() {
         <div ref={bottomRef} />
       </div>
 
-      {/* INPUT */}
+      {/* INPUT (FIXED) */}
       <div className="flex items-center gap-2 px-3 py-3 bg-white border-t">
         <input
+          ref={inputRef}
           value={newMessage}
           onChange={(e) => {
             setNewMessage(e.target.value);
-            if (!canChat) return;
-
             const userStr = localStorage.getItem("myshine_user");
             if (!userStr) return;
-
             const user = JSON.parse(userStr);
             socketRef.current?.emit("typing", user.id);
           }}
           disabled={!canChat}
-          placeholder={canChat ? "Type a message..." : "Chat time expired"}
-          className="flex-1 px-4 py-2 border rounded-full text-sm disabled:bg-gray-100"
+          placeholder="Type a message…"
+          className="flex-1 px-4 py-2 border rounded-full text-sm"
         />
+
         <button
+          type="button"
+          onMouseDown={(e) => e.preventDefault()} // 🔥 PREVENT BLUR
           onClick={handleSend}
           disabled={!canChat}
           className="bg-pink-500 text-white p-2 rounded-full disabled:bg-gray-300"

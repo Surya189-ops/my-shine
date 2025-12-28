@@ -29,6 +29,22 @@ const ProfileSchema = new Schema(
       enum: ["bronze", "silver", "gold"],
     },
 
+    country: {
+      type: String,
+      enum: [
+        "korea",
+        "japan",
+        "brazil",
+        "france",
+        "spain",
+        "usa",
+        "colombia",
+        "venezuela",
+        "argentina"
+      ],
+      required: false, // Optional field
+    },
+
     isCameraVerified: {
       type: Boolean,
       default: false,
@@ -38,8 +54,6 @@ const ProfileSchema = new Schema(
       type: String,
       default: "",
     },
-
-    
   },
   { timestamps: true }
 );

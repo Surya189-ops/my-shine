@@ -2,13 +2,26 @@ import { NextResponse } from "next/server";
 import connectDB from "@/lib/mongodb";
 import Profile from "@/models/Profile";
 
-
-
-
 export async function POST(req: Request) {
   try {
     const body = await req.json();
-    const { userId, name, age, bio, gender, isCameraVerified } = body;
+    const {
+      userId,
+      name,
+      age,
+      bio,
+      gender,
+      tier,
+      country,
+      isCameraVerified,
+    } = body;
+
+    if (!userId || !name || !age || !gender || !tier) {
+      return NextResponse.json(
+        { success: false, message: "Missing required fields" },
+        { status: 400 }
+      );
+    }
 
     await connectDB();
 
@@ -19,6 +32,8 @@ export async function POST(req: Request) {
       profile.age = age;
       profile.bio = bio;
       profile.gender = gender;
+      profile.tier = tier;
+      profile.country = country;
       profile.isCameraVerified = isCameraVerified;
       await profile.save();
     } else {
@@ -28,6 +43,8 @@ export async function POST(req: Request) {
         age,
         bio,
         gender,
+        tier,
+        country,
         isCameraVerified,
       });
     }
