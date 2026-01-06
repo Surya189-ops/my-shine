@@ -1,3 +1,5 @@
+
+
 import mongoose, { Schema, models, model } from "mongoose";
 
 const ProfileSchema = new Schema(
@@ -7,28 +9,31 @@ const ProfileSchema = new Schema(
       ref: "User",
       required: true,
       unique: true,
+      index: true,
     },
     name: {
       type: String,
       required: true,
+      trim: true,
     },
     age: {
       type: Number,
       required: true,
     },
-    bio: String,
-
+    bio: {
+      type: String,
+      default: "",
+    },
     gender: {
       type: String,
       enum: ["male", "female", "other"],
       required: true,
+      index: true,
     },
-
     tier: {
       type: String,
       enum: ["bronze", "silver", "gold"],
     },
-
     country: {
       type: String,
       enum: [
@@ -40,16 +45,14 @@ const ProfileSchema = new Schema(
         "usa",
         "colombia",
         "venezuela",
-        "argentina"
+        "argentina",
       ],
-      required: false, // Optional field
+      index: true,
     },
-
     isCameraVerified: {
       type: Boolean,
       default: false,
     },
-
     imageUrl: {
       type: String,
       default: "",

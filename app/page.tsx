@@ -145,27 +145,28 @@ export default function HomePage() {
   const [currentPage, setCurrentPage] = useState(0);
   const [requestedProfiles, setRequestedProfiles] = useState<Set<string>>(new Set());
 
-  const oppositeGender: Gender = viewerGender === "male" ? "female" : "male";
+  const oppositeGender: Gender = viewerGender;
   const allowedCountries =
-    oppositeGender === "female" ? WOMEN_COUNTRIES : MEN_COUNTRIES;
+    viewerGender === "female" ? WOMEN_COUNTRIES : MEN_COUNTRIES;
+
 
   useEffect(() => {
-  const userStr = localStorage.getItem("myshine_user");
-  if (!userStr) {
-    router.replace("/login");
-    return;
-  }
+    const userStr = localStorage.getItem("myshine_user");
+    if (!userStr) {
+      router.replace("/login");
+      return;
+    }
 
-  fetch(`/api/profiles?gender=${oppositeGender}`)
-    .then((res) => res.json())
-    .then((data) => {
-      if (data.success) {
-        setProfiles(data.profiles);
-      }
-      setLoading(false);
-    })
-    .catch(() => setLoading(false));
-}, [router, oppositeGender]);
+    fetch(`/api/profiles?gender=${viewerGender}`)
+      .then((res) => res.json())
+      .then((data) => {
+        if (data.success) {
+          setProfiles(data.profiles);
+        }
+        setLoading(false);
+      })
+      .catch(() => setLoading(false));
+  }, [router, oppositeGender]);
 
 
 
@@ -178,14 +179,15 @@ export default function HomePage() {
   /* -------- FILTER REAL PROFILES -------- */
   const filtered = profiles.filter((p) => {
     // Basic tier and gender match
-    if (p.tier !== selectedTier || p.gender !== oppositeGender) return false;
-    
+    if (p.tier !== selectedTier || p.gender !== viewerGender) return false;
+
+
     // If profile has country, check if it's allowed, otherwise include it
     if (p.country && !allowedCountries.includes(p.country as Country)) return false;
-    
+
     // Country filter
     if (selectedCountry !== "all" && p.country !== selectedCountry) return false;
-    
+
     return true;
   });
 
@@ -193,7 +195,7 @@ export default function HomePage() {
   const allAvailableProfiles = (() => {
     const defaults = defaultProfiles[selectedTier].filter(
       (dp) =>
-        dp.gender === oppositeGender &&
+        dp.gender === viewerGender &&
         allowedCountries.includes(dp.country as Country) &&
         (selectedCountry === "all" || dp.country === selectedCountry) &&
         !filtered.some((rp) => rp._id === dp._id)
@@ -230,6 +232,8 @@ export default function HomePage() {
     }
   };
 
+  // Replace the handleConnect function in app/page.tsx
+
   const handleConnect = async (e: React.MouseEvent, profileId: string) => {
     e.stopPropagation();
 
@@ -246,12 +250,18 @@ export default function HomePage() {
 
     const user = JSON.parse(userStr);
 
+    // ✅ FIX: Check if user has profileId
+    if (!user.profileId) {
+      alert("Profile not found. Please complete your profile.");
+      return;
+    }
+
     try {
       const res = await fetch("/api/connections/request", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          fromUserId: user.id,
+          fromProfileId: user.profileId, // ✅ CHANGED: Use profileId instead of userId
           toProfileId: profileId,
         }),
       });
@@ -260,22 +270,26 @@ export default function HomePage() {
 
       if (data.success) {
         setRequestedProfiles((prev) => new Set(prev).add(profileId));
+
+        // Optional: Show success message
+        console.log("✅ Connection request sent successfully");
       } else {
         alert(data.message || "Request already sent");
       }
     } catch (err) {
+      console.error("❌ Connection request error:", err);
       alert("Something went wrong");
     }
   };
 
   const handleChat = (e: React.MouseEvent, profileId: string) => {
     e.stopPropagation();
-    
+
     // Don't allow chat for placeholder profiles
     if (!isRealProfile(profileId)) {
       return;
     }
-    
+
     router.push(`/chat/${profileId}`);
   };
 
@@ -422,11 +436,10 @@ export default function HomePage() {
                   <div
                     key={profile._id}
                     onClick={() => handleProfileClick(profile._id)}
-                    className={`rounded-lg overflow-hidden bg-white shadow-sm flex flex-col transition-all duration-300 ${
-                      isRealProfile(profile._id) 
-                        ? "hover:-translate-y-2 hover:shadow-xl cursor-pointer" 
-                        : "opacity-75 cursor-not-allowed"
-                    }`}
+                    className={`rounded-lg overflow-hidden bg-white shadow-sm flex flex-col transition-all duration-300 ${isRealProfile(profile._id)
+                      ? "hover:-translate-y-2 hover:shadow-xl cursor-pointer"
+                      : "opacity-75 cursor-not-allowed"
+                      }`}
                     style={{ height: "300px" }}
                   >
                     <div

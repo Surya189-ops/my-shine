@@ -1,12 +1,22 @@
+// app/api/connections/request/route.ts
 import { NextResponse } from "next/server";
 import connectDB from "@/lib/mongodb";
 import ConnectionRequest from "@/models/ConnectionRequest";
+import Profile from "@/models/Profile";
 import mongoose from "mongoose";
 
 // Helper to check if ID is a valid MongoDB ObjectId (24-char hex string)
 const isValidObjectId = (id: string) => {
   if (!id) return false;
   return mongoose.Types.ObjectId.isValid(id) && String(id).length === 24;
+};
+
+// Helper to get Socket.IO instance
+const getIO = () => {
+  if (global.io) {
+    return global.io;
+  }
+  return null;
 };
 
 export async function POST(req: Request) {
@@ -19,23 +29,22 @@ export async function POST(req: Request) {
     const body = await req.json();
     console.log("📦 Request body:", body);
 
-    const { fromUserId, toProfileId } = body;
+    const { fromProfileId, toProfileId } = body;
 
     // Validate required fields
-    if (!fromUserId || !toProfileId) {
+    if (!fromProfileId || !toProfileId) {
       console.log("❌ Missing required fields");
       return NextResponse.json(
-        { success: false, message: "User ID and Profile ID are required" },
+        { success: false, message: "Both profile IDs are required" },
         { status: 400 }
       );
     }
 
     // Validate that both IDs are valid MongoDB ObjectIds
-    // This prevents requests to placeholder profiles (e.g., "b1", "s1", "g1")
-    if (!isValidObjectId(fromUserId)) {
-      console.log("❌ Invalid fromUserId format:", fromUserId);
+    if (!isValidObjectId(fromProfileId)) {
+      console.log("❌ Invalid fromProfileId format:", fromProfileId);
       return NextResponse.json(
-        { success: false, message: "Invalid user ID format" },
+        { success: false, message: "Invalid sender profile ID format" },
         { status: 400 }
       );
     }
@@ -43,15 +52,35 @@ export async function POST(req: Request) {
     if (!isValidObjectId(toProfileId)) {
       console.log("❌ Invalid toProfileId format:", toProfileId);
       return NextResponse.json(
-        { success: false, message: "Invalid profile ID. Cannot connect to unavailable profiles." },
+        { success: false, message: "Invalid receiver profile ID. Cannot connect to unavailable profiles." },
         { status: 400 }
       );
     }
 
-    // Check if connection request already exists (any status)
+    // ✅ Check if target profile exists and is not dummy
+    const targetProfile = await Profile.findById(toProfileId);
+    if (!targetProfile) {
+      return NextResponse.json(
+        { success: false, message: "Profile not found" },
+        { status: 404 }
+      );
+    }
+
+    // ✅ Get sender profile info for notification
+    const senderProfile = await Profile.findById(fromProfileId);
+    if (!senderProfile) {
+      return NextResponse.json(
+        { success: false, message: "Sender profile not found" },
+        { status: 404 }
+      );
+    }
+
+    // ✅ Check if connection request already exists (bidirectional check)
     const existing = await ConnectionRequest.findOne({
-      fromUserId,
-      toProfileId,
+      $or: [
+        { fromProfileId, toProfileId },
+        { fromProfileId: toProfileId, toProfileId: fromProfileId }
+      ]
     });
 
     console.log("🔍 Existing request:", existing ? `Found (${existing.status})` : "Not found");
@@ -75,14 +104,34 @@ export async function POST(req: Request) {
       }
     }
 
-    // Create new connection request
+    // ✅ Create new connection request
     const newRequest = await ConnectionRequest.create({
-      fromUserId,
+      fromProfileId,
       toProfileId,
       status: "pending",
     });
 
     console.log("✅ Connection request created:", newRequest._id);
+
+    // ✅ Emit socket event to notify receiver in real-time
+    const io = getIO();
+    if (io) {
+      console.log("🔔 Emitting socket notification to:", toProfileId);
+      io.emit("connection-request-sent", {
+        toProfileId: toProfileId.toString(),
+        fromProfile: {
+          _id: senderProfile._id.toString(),
+          name: senderProfile.name,
+          imageUrl: senderProfile.imageUrl,
+          age: senderProfile.age,
+          gender: senderProfile.gender,
+          tier: senderProfile.tier,
+        },
+        requestId: newRequest._id.toString(),
+      });
+    } else {
+      console.log("⚠️ Socket.IO not available");
+    }
 
     return NextResponse.json({ 
       success: true,

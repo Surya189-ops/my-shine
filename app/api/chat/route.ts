@@ -1,49 +1,41 @@
 import { NextResponse } from "next/server";
 import connectDB from "@/lib/mongodb";
 import Message from "@/models/Message";
-import { canUserChat } from "@/lib/canUserChat";
+import mongoose from "mongoose";
+
+const toObjectId = (id: string) => new mongoose.Types.ObjectId(id);
 
 /* -------- SEND MESSAGE -------- */
 export async function POST(req: Request) {
   try {
     await connectDB();
 
-    const { senderId, receiverId, text } = await req.json();
+    const { senderProfileId, receiverProfileId, text } = await req.json();
 
-    // 🔐 AUTH GUARD
-    if (!senderId) {
+    if (
+      !senderProfileId ||
+      !receiverProfileId ||
+      !text ||
+      !mongoose.Types.ObjectId.isValid(senderProfileId) ||
+      !mongoose.Types.ObjectId.isValid(receiverProfileId)
+    ) {
       return NextResponse.json(
-        { success: false, message: "Unauthorized" },
-        { status: 401 }
-      );
-    }
-
-    // 🔎 REQUIRED FIELDS
-    if (!receiverId || !text) {
-      return NextResponse.json(
-        { success: false, message: "Missing required fields" },
+        { success: false, message: "Invalid request" },
         { status: 400 }
       );
     }
 
-    // 🔐 PAYMENT CHECK
-    const allowed = await canUserChat(senderId, receiverId);
-
-    if (!allowed) {
-      return NextResponse.json(
-        { success: false, message: "Payment required to chat" },
-        { status: 403 }
-      );
-    }
+    // ✅ REMOVED: Connection check - chat freely for now
 
     const message = await Message.create({
-      senderId,
-      receiverId,
+      senderProfileId: toObjectId(senderProfileId),
+      receiverProfileId: toObjectId(receiverProfileId),
       text,
     });
 
     return NextResponse.json({ success: true, message });
-  } catch {
+  } catch (err) {
+    console.error("SEND MESSAGE ERROR:", err);
     return NextResponse.json(
       { success: false, message: "Failed to send message" },
       { status: 500 }
@@ -57,37 +49,42 @@ export async function GET(req: Request) {
     await connectDB();
 
     const { searchParams } = new URL(req.url);
-    const senderId = searchParams.get("senderId");
-    const receiverId = searchParams.get("receiverId");
+    const myProfileId = searchParams.get("myProfileId");
+    const otherProfileId = searchParams.get("otherProfileId");
 
-    // 🔐 AUTH GUARD
-    if (!senderId) {
+    if (
+      !myProfileId ||
+      !otherProfileId ||
+      !mongoose.Types.ObjectId.isValid(myProfileId) ||
+      !mongoose.Types.ObjectId.isValid(otherProfileId)
+    ) {
       return NextResponse.json(
-        { success: false, message: "Unauthorized" },
-        { status: 401 }
-      );
-    }
-
-    // 🔎 REQUIRED PARAM
-    if (!receiverId) {
-      return NextResponse.json(
-        { success: false, message: "receiverId is required" },
-        { status: 400 }
+        { success: false, messages: [] },
+        { status: 200 }
       );
     }
 
     const messages = await Message.find({
       $or: [
-        { senderId, receiverId },
-        { senderId: receiverId, receiverId: senderId },
+        { 
+          senderProfileId: toObjectId(myProfileId), 
+          receiverProfileId: toObjectId(otherProfileId) 
+        },
+        { 
+          senderProfileId: toObjectId(otherProfileId), 
+          receiverProfileId: toObjectId(myProfileId) 
+        },
       ],
-    }).sort({ createdAt: 1 });
+    })
+      .sort({ createdAt: 1 })
+      .lean();
 
     return NextResponse.json({ success: true, messages });
-  } catch {
+  } catch (err) {
+    console.error("FETCH MESSAGE ERROR:", err);
     return NextResponse.json(
-      { success: false, message: "Failed to load messages" },
-      { status: 500 }
+      { success: false, messages: [] },
+      { status: 200 }
     );
   }
 }

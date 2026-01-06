@@ -1,7 +1,6 @@
 import "./globals.css";
 import NotificationWrapper from "./components/NotificationWrapper";
 
-
 export const metadata = {
   title: "My Shine",
   description: "Talk & Connect",
@@ -26,7 +25,7 @@ export default function RootLayout({
       </head>
 
       <body className="bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 transition-colors duration-300">
-        {/* 🔔 TOP CONNECTION NOTIFICATION */}
+        {/* 🔔 GLOBAL CONNECTION NOTIFICATIONS */}
         <NotificationWrapper />
 
         {/* APP CONTENT */}

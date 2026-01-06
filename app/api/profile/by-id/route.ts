@@ -40,7 +40,8 @@ export async function GET(req: Request) {
       success: true,
       profile,
     });
-  } catch {
+  } catch (error) {
+    console.error("PROFILE BY ID ERROR:", error);
     return NextResponse.json(
       { success: false, message: "Server error" },
       { status: 500 }

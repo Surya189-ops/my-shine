@@ -1,10 +1,11 @@
+
 import mongoose, { Schema, models, model } from "mongoose";
 
 const ConnectionRequestSchema = new Schema(
   {
-    fromUserId: {
+    fromProfileId: {
       type: mongoose.Schema.Types.ObjectId,
-      ref: "User",
+      ref: "Profile",
       required: true,
     },
     toProfileId: {
@@ -21,12 +22,12 @@ const ConnectionRequestSchema = new Schema(
   { timestamps: true }
 );
 
-// Indexes for faster queries
-ConnectionRequestSchema.index({ fromUserId: 1, toProfileId: 1 });
+// Indexes
+ConnectionRequestSchema.index({ fromProfileId: 1, toProfileId: 1 });
 ConnectionRequestSchema.index({ status: 1 });
 
-const ConnectionRequest = 
-  models.ConnectionRequest || 
+const ConnectionRequest =
+  models.ConnectionRequest ||
   model("ConnectionRequest", ConnectionRequestSchema);
 
 export default ConnectionRequest;

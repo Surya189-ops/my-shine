@@ -51,7 +51,14 @@ export default function ProfilePage() {
           setAge(data.profile.age?.toString() || "");
           setBio(data.profile.bio || "");
           setGender(data.profile.gender || "");
-          setTier(data.profile.tier || "");
+
+          // ✅ FIX: Only set tier if gender is male
+          if (data.profile.gender === "male") {
+            setTier(data.profile.tier || "");
+          } else {
+            setTier("");
+          }
+
           setIsVerified(data.profile.isCameraVerified || false);
         }
       });
@@ -109,12 +116,12 @@ export default function ProfilePage() {
 
   /* ---------------- SAVE PROFILE ---------------- */
   const saveProfile = async () => {
-    if (!name || !age || !gender) {
-      alert("Please fill all required fields");
+    if (!name.trim() || !gender || Number(age) <= 0) {
+      alert("Please fill all required fields correctly");
       return;
     }
 
-    if (!tier) {
+    if ((gender === "male" || gender === "female") && !tier) {
       alert("Please select a tier");
       return;
     }
@@ -123,33 +130,35 @@ export default function ProfilePage() {
     setLoading(true);
 
     try {
+      const payload: any = {
+        userId: user.id,
+        name,
+        age: Number(age),
+        bio,
+        gender,
+        isCameraVerified: isVerified,
+      };
+
+      // ✅ only include tier for male
+      if (gender === "male" || gender === "female") {
+        payload.tier = tier;
+      }
+
+
       const res = await fetch("/api/profile", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          userId: user.id,
-          name,
-          age: Number(age),
-          bio,
-          gender,
-          tier, // ALWAYS send tier
-          isCameraVerified: isVerified,
-        }),
-
+        body: JSON.stringify(payload),
       });
 
       const data = await res.json();
 
       if (data.success) {
-        // ✅ STORE PROFILE FOR NOTIFICATIONS
-        localStorage.setItem("myshine_profile", JSON.stringify(data.profile));
-
         alert("Profile saved successfully");
+      } else {
+        alert(data.message || "Failed to save profile");
       }
-      else {
-        alert("Failed to save profile");
-      }
-    } catch {
+    } catch (err) {
       alert("Something went wrong");
     } finally {
       setLoading(false);
@@ -248,8 +257,13 @@ export default function ProfilePage() {
             <select
               value={gender}
               onChange={(e) => {
-                setGender(e.target.value);
-                if (e.target.value !== "male") setTier("");
+                const value = e.target.value;
+                setGender(value);
+
+                // clear tier ONLY for "other"
+                if (value === "other" || value === "") {
+                  setTier("");
+                }
               }}
               className="w-full mt-1 p-3 border rounded-lg"
             >
@@ -258,10 +272,12 @@ export default function ProfilePage() {
               <option value="female">Female</option>
               <option value="other">Other</option>
             </select>
+
           </div>
 
           {/* TIER */}
-          {gender && (
+          {(gender === "male" || gender === "female") && (
+
             <div className="mb-6">
               <label className="text-sm text-gray-600">Tier</label>
               <select

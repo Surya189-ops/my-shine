@@ -27,7 +27,7 @@ const defaultProfiles: Profile[] = [
   { _id: "b6", name: "Gabriela", tier: "bronze", gender: "female", country: "korea", age: 26, bio: "Seoul based, love fashion and beauty. Let's connect!", isBusy: false },
   { _id: "b7", name: "Luna", tier: "bronze", gender: "female", country: "japan", age: 20, bio: "Tokyo nights and city lights. Creative soul looking for interesting chats.", isBusy: false },
   { _id: "b8", name: "Valentina", tier: "bronze", gender: "female", country: "brazil", age: 24, bio: "Rio de Janeiro energy! Love music, dance, and positive vibes.", isBusy: false },
-  
+
   // Bronze Male
   { _id: "b9", name: "Raymond", tier: "bronze", gender: "male", country: "usa", age: 28, bio: "American entrepreneur. Love tech, sports, and meaningful conversations.", isBusy: false },
   { _id: "b10", name: "Kenji", tier: "bronze", gender: "male", country: "brazil", age: 27, bio: "Brazilian-Japanese mix. Passionate about martial arts and philosophy.", isBusy: false },
@@ -114,15 +114,15 @@ export default function ProfileViewPage() {
 
     // First check if it's a default profile
     const defaultProfile = defaultProfiles.find(p => p._id === profileId);
-    
+
     if (defaultProfile) {
       setProfile(defaultProfile);
       setLoading(false);
       return;
     }
 
-    // Otherwise fetch from API
-    fetch(`/api/profiles/${profileId}`)
+    // ✅ FIXED: Correct API route
+    fetch(`/api/profile/by-id?profileId=${profileId}`)
       .then((res) => res.json())
       .then((data) => {
         if (data.success) {
@@ -143,7 +143,7 @@ export default function ProfileViewPage() {
   const handleShare = async () => {
     setShowMenu(false);
     const profileUrl = `${window.location.origin}/profile/${profileId}`;
-    
+
     if (navigator.share) {
       try {
         await navigator.share({
@@ -223,7 +223,7 @@ export default function ProfileViewPage() {
 
       {/* -------- HEADER -------- */}
       <div className="sticky top-0 z-10 bg-white border-b px-4 py-3 flex items-center gap-3 shadow-sm">
-        <button 
+        <button
           onClick={() => router.back()}
           className="p-1 hover:bg-gray-100 rounded-full transition-colors"
         >
@@ -251,7 +251,7 @@ export default function ProfileViewPage() {
                 <div className="text-6xl text-gray-300">👤</div>
               </div>
             )}
-            
+
             {/* TIER BADGE - TOP RIGHT */}
             <div className="absolute top-4 right-4">
               <span
@@ -273,7 +273,7 @@ export default function ProfileViewPage() {
                     <h2 className="text-2xl font-bold text-gray-800">
                       {profile.name}
                     </h2>
-                    
+
                     {/* BUSY INDICATOR BESIDE NAME */}
                     {profile.isBusy && (
                       <span className="flex items-center gap-1 bg-red-100 text-red-600 text-[10px] px-2 py-1 rounded-full font-semibold">
@@ -282,7 +282,7 @@ export default function ProfileViewPage() {
                       </span>
                     )}
                   </div>
-                  
+
                   <div className="flex items-center gap-3 mt-2 text-sm text-gray-600">
                     {profile.age && <span>👤 {profile.age} years</span>}
                     {profile.country && (
@@ -303,11 +303,11 @@ export default function ProfileViewPage() {
                   {/* DROPDOWN MENU */}
                   {showMenu && (
                     <>
-                      <div 
-                        className="fixed inset-0 z-20" 
+                      <div
+                        className="fixed inset-0 z-20"
                         onClick={() => setShowMenu(false)}
                       />
-                      
+
                       <div className="absolute right-0 top-10 w-48 bg-white rounded-lg shadow-xl border z-30 py-1">
                         <button
                           onClick={handleSaveProfile}
@@ -316,7 +316,7 @@ export default function ProfileViewPage() {
                           <FiBookmark size={16} className={isSaved ? "fill-pink-500 text-pink-500" : "text-gray-700"} />
                           <span>{isSaved ? "Unsave Profile" : "Save Profile"}</span>
                         </button>
-                        
+
                         <button
                           onClick={handleShare}
                           className="w-full px-4 py-3 text-left text-sm hover:bg-gray-50 flex items-center gap-3"
@@ -324,9 +324,9 @@ export default function ProfileViewPage() {
                           <FiShare2 size={16} className="text-gray-700" />
                           <span>Share</span>
                         </button>
-                        
+
                         <div className="border-t my-1" />
-                        
+
                         <button
                           onClick={handleBlock}
                           className="w-full px-4 py-3 text-left text-sm hover:bg-red-50 flex items-center gap-3 text-red-600"
@@ -334,7 +334,7 @@ export default function ProfileViewPage() {
                           <FiAlertCircle size={16} />
                           <span>Block</span>
                         </button>
-                        
+
                         <button
                           onClick={handleReport}
                           className="w-full px-4 py-3 text-left text-sm hover:bg-red-50 flex items-center gap-3 text-red-600"
@@ -370,13 +370,12 @@ export default function ProfileViewPage() {
                 <button
                   onClick={() => handleSelectPlan("30min")}
                   disabled={profile.isBusy}
-                  className={`rounded-lg p-4 text-center transition-all border-2 ${
-                    profile.isBusy 
-                      ? 'opacity-50 cursor-not-allowed bg-gray-50 border-gray-200' 
+                  className={`rounded-lg p-4 text-center transition-all border-2 ${profile.isBusy
+                      ? 'opacity-50 cursor-not-allowed bg-gray-50 border-gray-200'
                       : selectedPlan === "30min"
-                      ? 'bg-pink-500 border-pink-500 shadow-lg scale-105'
-                      : 'bg-pink-50 border-pink-200 hover:border-pink-400 hover:shadow-md cursor-pointer'
-                  }`}
+                        ? 'bg-pink-500 border-pink-500 shadow-lg scale-105'
+                        : 'bg-pink-50 border-pink-200 hover:border-pink-400 hover:shadow-md cursor-pointer'
+                    }`}
                 >
                   <p className={`text-xs mb-1 ${selectedPlan === "30min" ? 'text-white' : 'text-gray-600'}`}>
                     30 minutes
@@ -388,17 +387,16 @@ export default function ProfileViewPage() {
                     <p className="text-[10px] text-pink-100 mt-1">✓ Selected</p>
                   )}
                 </button>
-                
+
                 <button
                   onClick={() => handleSelectPlan("1hr")}
                   disabled={profile.isBusy}
-                  className={`rounded-lg p-4 text-center transition-all border-2 ${
-                    profile.isBusy 
-                      ? 'opacity-50 cursor-not-allowed bg-gray-50 border-gray-200' 
+                  className={`rounded-lg p-4 text-center transition-all border-2 ${profile.isBusy
+                      ? 'opacity-50 cursor-not-allowed bg-gray-50 border-gray-200'
                       : selectedPlan === "1hr"
-                      ? 'bg-pink-500 border-pink-500 shadow-lg scale-105'
-                      : 'bg-pink-50 border-pink-200 hover:border-pink-400 hover:shadow-md cursor-pointer'
-                  }`}
+                        ? 'bg-pink-500 border-pink-500 shadow-lg scale-105'
+                        : 'bg-pink-50 border-pink-200 hover:border-pink-400 hover:shadow-md cursor-pointer'
+                    }`}
                 >
                   <p className={`text-xs mb-1 ${selectedPlan === "1hr" ? 'text-white' : 'text-gray-600'}`}>
                     1 hour
@@ -411,7 +409,7 @@ export default function ProfileViewPage() {
                   )}
                 </button>
               </div>
-              
+
               {profile.isBusy && (
                 <p className="text-xs text-red-500 text-center mt-2 flex items-center justify-center gap-1">
                   <span className="w-1.5 h-1.5 bg-red-500 rounded-full animate-pulse" />
@@ -425,11 +423,10 @@ export default function ProfileViewPage() {
               <button
                 onClick={() => router.push(`/chat/${profile._id}`)}
                 disabled={profile.isBusy}
-                className={`flex-1 flex items-center justify-center gap-2 py-3 rounded-xl border-2 border-pink-500 text-sm font-semibold transition-all active:scale-95 ${
-                  profile.isBusy
+                className={`flex-1 flex items-center justify-center gap-2 py-3 rounded-xl border-2 border-pink-500 text-sm font-semibold transition-all active:scale-95 ${profile.isBusy
                     ? 'opacity-50 cursor-not-allowed text-gray-400 border-gray-300'
                     : 'text-pink-500 hover:bg-pink-50'
-                }`}
+                  }`}
               >
                 <FiMessageCircle size={18} />
                 Chat Now
@@ -438,11 +435,10 @@ export default function ProfileViewPage() {
               <button
                 onClick={handleProceedToBook}
                 disabled={profile.isBusy || !selectedPlan}
-                className={`flex-1 flex items-center justify-center gap-2 py-3 rounded-xl text-sm font-semibold transition-all active:scale-95 shadow-lg ${
-                  profile.isBusy || !selectedPlan
+                className={`flex-1 flex items-center justify-center gap-2 py-3 rounded-xl text-sm font-semibold transition-all active:scale-95 shadow-lg ${profile.isBusy || !selectedPlan
                     ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
                     : 'bg-pink-500 text-white hover:bg-pink-600'
-                }`}
+                  }`}
               >
                 <FiCalendar size={18} />
                 {selectedPlan ? 'Book Session' : 'Select Plan First'}
