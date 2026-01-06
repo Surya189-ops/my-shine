@@ -67,26 +67,8 @@ export default function SocketHandler(
     });
 
     // ============ CONNECTION REQUESTS ============
-    // Notify user of new connection request
-    socket.on("connection-request-sent", (data: {
-      toProfileId: string;
-      fromProfile: {
-        _id: string;
-        name: string;
-        imageUrl?: string;
-        age: number;
-        gender: string;
-        tier: string;
-      };
-      requestId: string;
-    }) => {
-      console.log("🔔 Sending connection request notification to:", data.toProfileId);
-      io.to(`user:${data.toProfileId}`).emit("connection-request-received", {
-        fromProfile: data.fromProfile,
-        requestId: data.requestId,
-        timestamp: new Date().toISOString(),
-      });
-    });
+    // Notify user of new connection request (direct emit from API)
+    // No listener needed here - API emits directly to room
 
     // Notify sender of response (accepted/rejected)
     socket.on("connection-response-sent", (data: {

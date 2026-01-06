@@ -1,3 +1,4 @@
+// app/api/connections/incoming/route.ts
 import { NextResponse } from "next/server";
 import connectDB from "@/lib/mongodb";
 import ConnectionRequest from "@/models/ConnectionRequest";
@@ -24,11 +25,28 @@ export async function GET(req: Request) {
       toProfileId: profileId,
       status: "pending",
     })
-      .populate("fromProfileId", "name imageUrl age gender tier country") // ✅ Added more fields
       .sort({ createdAt: -1 })
       .lean();
 
-    return NextResponse.json({ success: true, requests });
+    // ✅ Manually populate fromProfileId data
+    const populatedRequests = await Promise.all(
+      requests.map(async (request) => {
+        const fromProfile = await Profile.findById(request.fromProfileId).lean();
+        return {
+          ...request,
+          fromProfileId: fromProfile || null,
+        };
+      })
+    );
+
+    // ✅ Filter out requests where profile wasn't found
+    const validRequests = populatedRequests.filter(
+      (r) => r.fromProfileId !== null
+    );
+
+    console.log("📥 Incoming requests found:", validRequests.length);
+
+    return NextResponse.json({ success: true, requests: validRequests });
   } catch (err) {
     console.error("INCOMING CONNECTION ERROR:", err);
     return NextResponse.json(

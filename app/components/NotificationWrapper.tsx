@@ -30,47 +30,73 @@ export default function NotificationWrapper() {
 
   // Initialize socket and join user room
   useEffect(() => {
-    const userStr = localStorage.getItem("myshine_user");
-    if (!userStr) return;
-
-    const user = JSON.parse(userStr);
-    if (!user.profileId) return;
-
-    setProfileId(user.profileId);
-
-    // Initialize socket if not already connected
-    if (!socket) {
-      socket = io({
-        path: "/api/socket",
-      });
-
-      socket.on("connect", () => {
-        console.log("🔔 Notification socket connected");
-        socket?.emit("join-user-room", user.profileId);
-      });
-
-      socket.on("disconnect", () => {
-        console.log("🔔 Notification socket disconnected");
-      });
-    } else if (socket.connected) {
-      socket.emit("join-user-room", user.profileId);
-    }
-
-    // Listen for connection requests
-    socket.on("connection-request-received", (data: PendingNotification) => {
-      console.log("🔔 Received connection request:", data);
-      
-      // Add to queue if there's already a notification showing
-      if (currentNotification) {
-        setNotificationQueue((prev) => [...prev, data]);
-      } else {
-        setCurrentNotification(data);
+    const initializeSocket = async () => {
+      // First, ensure socket server is running
+      try {
+        await fetch("/api/socket");
+        console.log("✅ Socket server ready");
+      } catch (err) {
+        console.error("❌ Socket server initialization failed:", err);
       }
-    });
+
+      const userStr = localStorage.getItem("myshine_user");
+      if (!userStr) return;
+
+      const user = JSON.parse(userStr);
+      if (!user.profileId) {
+        console.warn("⚠️ No profileId found in localStorage");
+        return;
+      }
+
+      setProfileId(user.profileId);
+      console.log("👤 Current user profileId:", user.profileId);
+
+      // Initialize socket if not already connected
+      if (!socket) {
+        console.log("🔌 Initializing socket for profileId:", user.profileId);
+        
+        socket = io({
+          path: "/api/socket",
+        });
+
+        socket.on("connect", () => {
+          console.log("🔔 Notification socket connected, ID:", socket?.id);
+          console.log("👤 Joining user room:", user.profileId);
+          socket?.emit("join-user-room", user.profileId);
+        });
+
+        socket.on("disconnect", () => {
+          console.log("🔔 Notification socket disconnected");
+        });
+
+        socket.on("connect_error", (error) => {
+          console.error("❌ Socket connection error:", error);
+        });
+      } else if (socket.connected) {
+        console.log("🔄 Socket already connected, joining room:", user.profileId);
+        socket.emit("join-user-room", user.profileId);
+      }
+
+      // Listen for connection requests
+      socket.on("connection-request-received", (data: PendingNotification) => {
+        console.log("🔔 ✅ RECEIVED CONNECTION REQUEST:", data);
+        
+        // Add to queue if there's already a notification showing
+        if (currentNotification) {
+          console.log("📋 Adding to queue (notification already showing)");
+          setNotificationQueue((prev) => [...prev, data]);
+        } else {
+          console.log("🎉 Showing notification immediately");
+          setCurrentNotification(data);
+        }
+      });
+    };
+
+    initializeSocket();
 
     return () => {
-      if (socket && user.profileId) {
-        socket.emit("leave-user-room", user.profileId);
+      if (socket && profileId) {
+        socket.emit("leave-user-room", profileId);
       }
     };
   }, []);

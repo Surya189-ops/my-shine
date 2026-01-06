@@ -116,9 +116,17 @@ export async function POST(req: Request) {
     // ✅ Emit socket event to notify receiver in real-time
     const io = getIO();
     if (io) {
-      console.log("🔔 Emitting socket notification to:", toProfileId);
-      io.emit("connection-request-sent", {
-        toProfileId: toProfileId.toString(),
+      const targetRoom = `user:${toProfileId}`;
+      console.log("🔔 Emitting socket notification to room:", targetRoom);
+      console.log("📦 Notification data:", {
+        fromProfile: {
+          _id: senderProfile._id.toString(),
+          name: senderProfile.name,
+          tier: senderProfile.tier,
+        }
+      });
+      
+      io.to(targetRoom).emit("connection-request-received", {
         fromProfile: {
           _id: senderProfile._id.toString(),
           name: senderProfile.name,
@@ -128,9 +136,12 @@ export async function POST(req: Request) {
           tier: senderProfile.tier,
         },
         requestId: newRequest._id.toString(),
+        timestamp: new Date().toISOString(),
       });
+      
+      console.log("✅ Socket event emitted successfully");
     } else {
-      console.log("⚠️ Socket.IO not available");
+      console.log("⚠️ Socket.IO not available - notification will not be sent in real-time");
     }
 
     return NextResponse.json({ 
