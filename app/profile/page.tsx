@@ -52,14 +52,25 @@ export default function ProfilePage() {
           setBio(data.profile.bio || "");
           setGender(data.profile.gender || "");
 
-          // ✅ FIX: Only set tier if gender is male
-          if (data.profile.gender === "male") {
+          // ✅ FIX: Only set tier if gender is male or female
+          if (data.profile.gender === "male" || data.profile.gender === "female") {
             setTier(data.profile.tier || "");
           } else {
             setTier("");
           }
 
           setIsVerified(data.profile.isCameraVerified || false);
+
+          // ✅ NEW: Update localStorage with profileId if missing
+          if (data.profile._id && !user.profileId) {
+            const updatedUser = {
+              ...user,
+              profileId: data.profile._id,
+              name: data.profile.name,
+            };
+            localStorage.setItem("myshine_user", JSON.stringify(updatedUser));
+            console.log("✅ ProfileId added to localStorage:", data.profile._id);
+          }
         }
       });
   }, []);
@@ -126,7 +137,6 @@ export default function ProfilePage() {
       return;
     }
 
-
     setLoading(true);
 
     try {
@@ -139,11 +149,10 @@ export default function ProfilePage() {
         isCameraVerified: isVerified,
       };
 
-      // ✅ only include tier for male
+      // ✅ only include tier for male/female
       if (gender === "male" || gender === "female") {
         payload.tier = tier;
       }
-
 
       const res = await fetch("/api/profile", {
         method: "POST",
@@ -154,11 +163,27 @@ export default function ProfilePage() {
       const data = await res.json();
 
       if (data.success) {
+        // ✅ NEW: Update localStorage with profileId and name
+        const updatedUser = {
+          ...user,
+          profileId: data.profile._id,
+          name: data.profile.name,
+        };
+        localStorage.setItem("myshine_user", JSON.stringify(updatedUser));
+        console.log("✅ Profile saved with profileId:", data.profile._id);
+
+        // Update local state
+        setProfile(data.profile);
+
         alert("Profile saved successfully");
+        
+        // ✅ Redirect to homepage after successful save
+        router.push("/");
       } else {
         alert(data.message || "Failed to save profile");
       }
     } catch (err) {
+      console.error("❌ Profile save error:", err);
       alert("Something went wrong");
     } finally {
       setLoading(false);
@@ -272,12 +297,10 @@ export default function ProfilePage() {
               <option value="female">Female</option>
               <option value="other">Other</option>
             </select>
-
           </div>
 
           {/* TIER */}
           {(gender === "male" || gender === "female") && (
-
             <div className="mb-6">
               <label className="text-sm text-gray-600">Tier</label>
               <select

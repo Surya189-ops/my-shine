@@ -2,6 +2,7 @@
 import "./globals.css";
 import SocketInitializer from "./components/SocketInitializer";
 import NotificationWrapper from "./components/NotificationWrapper";
+import ProfileIdFixer from "./components/ProfileIdFixer";
 
 export const metadata = {
   title: "My Shine",
@@ -29,6 +30,9 @@ export default function RootLayout({
       <body className="bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 transition-colors duration-300">
         {/* 🚀 INITIALIZE SOCKET SERVER FIRST */}
         <SocketInitializer />
+
+        {/* 🔧 FIX MISSING PROFILEID FOR EXISTING USERS */}
+        <ProfileIdFixer />
 
         {/* 🔔 GLOBAL CONNECTION NOTIFICATIONS */}
         <NotificationWrapper />

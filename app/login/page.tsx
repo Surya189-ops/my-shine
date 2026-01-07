@@ -16,21 +16,6 @@ export default function LoginPage() {
 
   const router = useRouter();
 
-  /* ---------------- AUTO REDIRECT IF LOGGED IN ---------------- */
-
-
-  // useEffect(() => {
-  //   const user = localStorage.getItem("myshine_user");
-  //   if (user) {
-  //     try {
-  //       const parsed = JSON.parse(user);
-  //       if (parsed.loggedIn) {
-  //         router.replace("/profile");
-  //       }
-  //     } catch {}
-  //   }
-  // }, [router]);
-
   /* ---------------- SEND OTP ---------------- */
   const sendOtp = async () => {
     if (!phone) return alert("Enter phone number");
@@ -72,17 +57,56 @@ export default function LoginPage() {
       const data = await res.json();
 
       if (data.success) {
-        localStorage.setItem(
-          "myshine_user",
-          JSON.stringify({
-            id: data.user.id,
-            phone: data.user.phone,
-            loggedIn: true,
-          })
-        );
-        router.push("/profile");
-      }
-      else {
+        const userId = data.user.id;
+        
+        // ✅ NEW: Fetch profile to get profileId
+        console.log("✅ Login successful, fetching profile...");
+        
+        try {
+          const profileRes = await fetch(`/api/profile?userId=${userId}`);
+          const profileData = await profileRes.json();
+          
+          if (profileData.success && profileData.profile) {
+            // ✅ Save with profileId
+            localStorage.setItem(
+              "myshine_user",
+              JSON.stringify({
+                id: userId,
+                profileId: profileData.profile._id,
+                phone: data.user.phone,
+                name: profileData.profile.name,
+                loggedIn: true,
+              })
+            );
+            console.log("✅ ProfileId saved:", profileData.profile._id);
+            router.push("/");
+          } else {
+            // ❌ No profile exists - redirect to profile creation
+            console.log("⚠️ No profile found, redirecting to profile creation");
+            localStorage.setItem(
+              "myshine_user",
+              JSON.stringify({
+                id: userId,
+                phone: data.user.phone,
+                loggedIn: true,
+              })
+            );
+            router.push("/profile");
+          }
+        } catch (profileErr) {
+          console.error("❌ Error fetching profile:", profileErr);
+          // Fallback: save without profileId and redirect to profile page
+          localStorage.setItem(
+            "myshine_user",
+            JSON.stringify({
+              id: userId,
+              phone: data.user.phone,
+              loggedIn: true,
+            })
+          );
+          router.push("/profile");
+        }
+      } else {
         alert(data.message);
       }
     } catch {
