@@ -149,7 +149,6 @@ export default function HomePage() {
   const allowedCountries =
     viewerGender === "female" ? WOMEN_COUNTRIES : MEN_COUNTRIES;
 
-
   useEffect(() => {
     const userStr = localStorage.getItem("myshine_user");
     if (!userStr) {
@@ -168,8 +167,6 @@ export default function HomePage() {
       .catch(() => setLoading(false));
   }, [router, oppositeGender]);
 
-
-
   useEffect(() => {
     setSelectedPlan(plans[selectedTier][0]);
     setSelectedCountry("all");
@@ -180,7 +177,6 @@ export default function HomePage() {
   const filtered = profiles.filter((p) => {
     // Basic tier and gender match
     if (p.tier !== selectedTier || p.gender !== viewerGender) return false;
-
 
     // If profile has country, check if it's allowed, otherwise include it
     if (p.country && !allowedCountries.includes(p.country as Country)) return false;
@@ -232,8 +228,6 @@ export default function HomePage() {
     }
   };
 
-  // Replace the handleConnect function in app/page.tsx
-
   const handleConnect = async (e: React.MouseEvent, profileId: string) => {
     e.stopPropagation();
 
@@ -250,7 +244,7 @@ export default function HomePage() {
 
     const user = JSON.parse(userStr);
 
-    // ✅ FIX: Check if user has profileId
+    // Check if user has profileId
     if (!user.profileId) {
       alert("Profile not found. Please complete your profile.");
       return;
@@ -261,7 +255,7 @@ export default function HomePage() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          fromProfileId: user.profileId, // ✅ CHANGED: Use profileId instead of userId
+          fromProfileId: user.profileId,
           toProfileId: profileId,
         }),
       });
@@ -270,8 +264,6 @@ export default function HomePage() {
 
       if (data.success) {
         setRequestedProfiles((prev) => new Set(prev).add(profileId));
-
-        // Optional: Show success message
         console.log("✅ Connection request sent successfully");
       } else {
         alert(data.message || "Request already sent");

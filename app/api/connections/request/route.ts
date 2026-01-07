@@ -97,9 +97,39 @@ export async function POST(req: Request) {
           message: "Already connected with this profile" 
         });
       } else if (existing.status === "rejected") {
+        // ✅ ALLOW RE-REQUEST: Update the rejected request to pending again
+        console.log("♻️ Re-sending previously rejected request");
+        existing.status = "pending";
+        existing.updatedAt = new Date();
+        await existing.save();
+        
+        // Emit socket notification
+        const io = getIO();
+        if (io) {
+          const targetRoom = `user:${toProfileId}`;
+          console.log("🔔 Emitting socket notification to room:", targetRoom);
+          
+          const room = io.sockets.adapter.rooms.get(targetRoom);
+          console.log(`👥 Room ${targetRoom} has ${room ? room.size : 0} members`);
+          
+          io.to(targetRoom).emit("connection-request-received", {
+            fromProfile: {
+              _id: senderProfile._id.toString(),
+              name: senderProfile.name,
+              imageUrl: senderProfile.imageUrl,
+              age: senderProfile.age,
+              gender: senderProfile.gender,
+              tier: senderProfile.tier,
+            },
+            requestId: existing._id.toString(),
+            timestamp: new Date().toISOString(),
+          });
+        }
+        
         return NextResponse.json({ 
-          success: false, 
-          message: "Connection request was previously rejected" 
+          success: true,
+          message: "Connection request re-sent successfully",
+          requestId: existing._id
         });
       }
     }
@@ -114,6 +144,9 @@ export async function POST(req: Request) {
     console.log("✅ Connection request created:", newRequest._id);
 
     // ✅ Emit socket event to notify receiver in real-time
+    console.log("🔍 Checking for Socket.IO instance...");
+    console.log("🔍 global.io exists:", !!global.io);
+    
     const io = getIO();
     if (io) {
       const targetRoom = `user:${toProfileId}`;
@@ -125,6 +158,10 @@ export async function POST(req: Request) {
           tier: senderProfile.tier,
         }
       });
+      
+      // Check if anyone is in the room
+      const room = io.sockets.adapter.rooms.get(targetRoom);
+      console.log(`👥 Room ${targetRoom} has ${room ? room.size : 0} members`);
       
       io.to(targetRoom).emit("connection-request-received", {
         fromProfile: {
@@ -142,6 +179,7 @@ export async function POST(req: Request) {
       console.log("✅ Socket event emitted successfully");
     } else {
       console.log("⚠️ Socket.IO not available - notification will not be sent in real-time");
+      console.log("💡 Make sure socket server is initialized by visiting /api/socket first");
     }
 
     return NextResponse.json({ 

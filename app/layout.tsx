@@ -1,4 +1,6 @@
+// app/layout.tsx
 import "./globals.css";
+import SocketInitializer from "./components/SocketInitializer";
 import NotificationWrapper from "./components/NotificationWrapper";
 
 export const metadata = {
@@ -25,6 +27,9 @@ export default function RootLayout({
       </head>
 
       <body className="bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 transition-colors duration-300">
+        {/* 🚀 INITIALIZE SOCKET SERVER FIRST */}
+        <SocketInitializer />
+
         {/* 🔔 GLOBAL CONNECTION NOTIFICATIONS */}
         <NotificationWrapper />
 

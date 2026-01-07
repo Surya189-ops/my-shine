@@ -9,17 +9,26 @@ export default function SocketHandler(
 ) {
   if (res.socket.server.io) {
     console.log("✅ Socket already running");
+    global.io = res.socket.server.io; // ✅ Ensure global is set
     res.end();
     return;
   }
 
+  console.log("🚀 Initializing new Socket.IO server...");
+  
   const io = new Server(res.socket.server, {
     path: "/api/socket",
     addTrailingSlash: false,
+    cors: {
+      origin: "*",
+      methods: ["GET", "POST"]
+    }
   });
 
   res.socket.server.io = io;
   global.io = io; // ✅ Store globally for API routes
+  
+  console.log("✅ Socket.IO server created and stored globally");
 
   io.on("connection", (socket) => {
     console.log("✅ Socket connected:", socket.id);
