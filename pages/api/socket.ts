@@ -9,7 +9,7 @@ export default function SocketHandler(
 ) {
   if (res.socket.server.io) {
     console.log("✅ Socket already running");
-    global.io = res.socket.server.io; // ✅ Ensure global is set
+    global.io = res.socket.server.io; // ✅ Ensure global is always set
     res.end();
     return;
   }
@@ -29,6 +29,7 @@ export default function SocketHandler(
   global.io = io; // ✅ Store globally for API routes
   
   console.log("✅ Socket.IO server created and stored globally");
+  console.log("✅ global.io is now:", !!global.io);
 
   io.on("connection", (socket) => {
     console.log("✅ Socket connected:", socket.id);

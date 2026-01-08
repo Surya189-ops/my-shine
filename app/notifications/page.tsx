@@ -58,7 +58,7 @@ export default function NotificationsPage() {
     }
   };
 
-  const handleRespond = async (requestId: string, action: "accepted" | "rejected") => {
+  const handleRespond = async (requestId: string, action: "accepted" | "rejected", fromProfileId?: string) => {
     setProcessingId(requestId);
 
     try {
@@ -73,6 +73,14 @@ export default function NotificationsPage() {
       if (data.success) {
         // Remove from list
         setRequests((prev) => prev.filter((r) => r._id !== requestId));
+        
+        // ✅ NEW: If accepted, redirect to chat
+        if (action === "accepted" && fromProfileId) {
+          console.log("💬 Connection accepted, redirecting to chat...");
+          setTimeout(() => {
+            router.push(`/chat/${fromProfileId}`);
+          }, 500);
+        }
       } else {
         alert(data.message || "Failed to respond");
       }
@@ -199,7 +207,7 @@ export default function NotificationsPage() {
                         <FaTimes size={16} />
                       </button>
                       <button
-                        onClick={() => handleRespond(request._id, "accepted")}
+                        onClick={() => handleRespond(request._id, "accepted", request.fromProfileId._id)}
                         disabled={processingId === request._id}
                         className="w-10 h-10 rounded-full bg-green-500 hover:bg-green-600 text-white flex items-center justify-center transition-all hover:scale-110 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed shadow-md"
                       >

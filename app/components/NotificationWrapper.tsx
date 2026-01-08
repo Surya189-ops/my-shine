@@ -79,7 +79,8 @@ export default function NotificationWrapper() {
 
       // Listen for connection requests
       socket.on("connection-request-received", (data: PendingNotification) => {
-        console.log("🔔 ✅ RECEIVED CONNECTION REQUEST:", data);
+        console.log("🔔 ✅✅✅ RECEIVED CONNECTION REQUEST:", data);
+        console.log("📦 Data details:", JSON.stringify(data, null, 2));
         
         // Add to queue if there's already a notification showing
         if (currentNotification) {
@@ -89,6 +90,11 @@ export default function NotificationWrapper() {
           console.log("🎉 Showing notification immediately");
           setCurrentNotification(data);
         }
+      });
+
+      // ✅ Test: Listen for ANY socket event
+      socket.onAny((eventName, ...args) => {
+        console.log(`🔊 Socket event received: ${eventName}`, args);
       });
     };
 
@@ -135,6 +141,13 @@ export default function NotificationWrapper() {
             action: "accepted",
             requestId,
           });
+        }
+
+        // ✅ NEW: Redirect to chat with the person who sent the request
+        const otherProfileId = currentNotification?.fromProfile._id;
+        if (otherProfileId) {
+          console.log("💬 Redirecting to chat with:", otherProfileId);
+          window.location.href = `/chat/${otherProfileId}`;
         }
       }
     } catch (err) {

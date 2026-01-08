@@ -87,9 +87,29 @@ export async function POST(req: Request) {
 
     if (existing) {
       if (existing.status === "pending") {
+        // ✅ Re-send notification for pending request
+        const io = getIO();
+        if (io) {
+          const targetRoom = `user:${toProfileId}`;
+          io.to(targetRoom).emit("connection-request-received", {
+            fromProfile: {
+              _id: senderProfile._id.toString(),
+              name: senderProfile.name,
+              imageUrl: senderProfile.imageUrl,
+              age: senderProfile.age,
+              gender: senderProfile.gender,
+              tier: senderProfile.tier,
+            },
+            requestId: existing._id.toString(),
+            timestamp: new Date().toISOString(),
+          });
+          console.log("🔔 Re-sent notification for pending request");
+        }
+        
         return NextResponse.json({ 
-          success: false, 
-          message: "Connection request already sent" 
+          success: true, 
+          message: "Connection request already sent (notification re-sent)",
+          requestId: existing._id
         });
       } else if (existing.status === "accepted") {
         return NextResponse.json({ 
@@ -147,7 +167,21 @@ export async function POST(req: Request) {
     console.log("🔍 Checking for Socket.IO instance...");
     console.log("🔍 global.io exists:", !!global.io);
     
-    const io = getIO();
+    // ✅ Try to get IO from multiple sources
+    let io = getIO();
+    
+    // If getIO() returns null, try to re-initialize
+    if (!io) {
+      console.log("⚠️ global.io not found, attempting to re-fetch...");
+      try {
+        await fetch(`${process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000'}/api/socket`);
+        io = getIO();
+        console.log("🔄 After re-fetch, global.io exists:", !!io);
+      } catch (err) {
+        console.error("❌ Failed to initialize socket:", err);
+      }
+    }
+    
     if (io) {
       const targetRoom = `user:${toProfileId}`;
       console.log("🔔 Emitting socket notification to room:", targetRoom);
@@ -162,6 +196,10 @@ export async function POST(req: Request) {
       // Check if anyone is in the room
       const room = io.sockets.adapter.rooms.get(targetRoom);
       console.log(`👥 Room ${targetRoom} has ${room ? room.size : 0} members`);
+      
+      if (!room || room.size === 0) {
+        console.log("⚠️ Warning: Target user is not connected to socket, notification will only appear in notification center");
+      }
       
       io.to(targetRoom).emit("connection-request-received", {
         fromProfile: {
@@ -178,8 +216,8 @@ export async function POST(req: Request) {
       
       console.log("✅ Socket event emitted successfully");
     } else {
-      console.log("⚠️ Socket.IO not available - notification will not be sent in real-time");
-      console.log("💡 Make sure socket server is initialized by visiting /api/socket first");
+      console.log("❌ Socket.IO not available - notification will not be sent in real-time");
+      console.log("💡 User will see notification in notification center only");
     }
 
     return NextResponse.json({ 

@@ -31,6 +31,7 @@ export default function ConnectionToast({
   const [timeLeft, setTimeLeft] = useState(7);
   const [isVisible, setIsVisible] = useState(true);
   const [isProcessing, setIsProcessing] = useState(false);
+  const [acceptingMessage, setAcceptingMessage] = useState(false);
 
   useEffect(() => {
     // Countdown timer
@@ -56,8 +57,13 @@ export default function ConnectionToast({
   const handleAccept = async () => {
     if (isProcessing) return;
     setIsProcessing(true);
-    setIsVisible(false);
-    setTimeout(() => onAccept(requestId), 300);
+    setAcceptingMessage(true);
+    
+    // Show accepting message for 1 second before redirect
+    setTimeout(() => {
+      setIsVisible(false);
+      setTimeout(() => onAccept(requestId), 300);
+    }, 1000);
   };
 
   const handleReject = async () => {
@@ -101,7 +107,22 @@ export default function ConnectionToast({
         </div>
 
         <div className="p-4">
-          <div className="flex items-center gap-3">
+          {acceptingMessage ? (
+            // ✅ Accepting state
+            <div className="flex items-center gap-3 justify-center py-2">
+              <div className="w-12 h-12 rounded-full bg-green-500 flex items-center justify-center text-white">
+                <FaCheck size={24} />
+              </div>
+              <div>
+                <p className="text-lg font-semibold text-green-600">
+                  Connected! 🎉
+                </p>
+                <p className="text-sm text-gray-500">Opening chat...</p>
+              </div>
+            </div>
+          ) : (
+            // ✅ Normal state
+            <div className="flex items-center gap-3">
             {/* Profile Image with Tier Border */}
             <div
               onClick={handleProfileClick}
@@ -162,6 +183,7 @@ export default function ConnectionToast({
               </button>
             </div>
           </div>
+          )}
         </div>
       </div>
     </div>

@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import BottomNav from "./components/BottomNav";
 import { FiChevronDown, FiChevronRight, FiChevronLeft } from "react-icons/fi";
+import DebugPanel from "./components/DebugPanel";
 
 type Tier = "bronze" | "silver" | "gold";
 type Gender = "male" | "female";
@@ -509,6 +510,7 @@ export default function HomePage() {
       </div>
 
       <BottomNav />
+      <DebugPanel />
     </>
   );
 }
