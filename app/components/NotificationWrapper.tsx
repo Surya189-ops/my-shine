@@ -4,6 +4,7 @@
 import { useEffect, useState } from "react";
 import { io, Socket } from "socket.io-client";
 import ConnectionToast from "./ConnectionToast";
+import ConnectionResponseToast from "./ConnectionResponseToast";
 
 interface PendingNotification {
   fromProfile: {
@@ -18,6 +19,13 @@ interface PendingNotification {
   timestamp: string;
 }
 
+interface ResponseNotification {
+  fromProfileId: string;
+  fromName: string;
+  action: "accepted" | "rejected";
+  timestamp: string;
+}
+
 let socket: Socket | null = null;
 
 export default function NotificationWrapper() {
@@ -26,6 +34,8 @@ export default function NotificationWrapper() {
   const [notificationQueue, setNotificationQueue] = useState<
     PendingNotification[]
   >([]);
+  const [responseNotification, setResponseNotification] =
+    useState<ResponseNotification | null>(null);
   const [profileId, setProfileId] = useState<string | null>(null);
 
   // Initialize socket and join user room
@@ -96,6 +106,12 @@ export default function NotificationWrapper() {
       socket.onAny((eventName, ...args) => {
         console.log(`🔊 Socket event received: ${eventName}`, args);
       });
+
+      // ✅ NEW: Listen for connection response (accept/reject)
+      socket.on("connection-response-received", (data: ResponseNotification) => {
+        console.log("🔔 ✅ CONNECTION RESPONSE RECEIVED:", data);
+        setResponseNotification(data);
+      });
     };
 
     initializeSocket();
@@ -132,18 +148,24 @@ export default function NotificationWrapper() {
       if (data.success) {
         console.log("✅ Connection accepted");
         
+        // ✅ Get user name from localStorage
+        const userStr = localStorage.getItem("myshine_user");
+        const user = userStr ? JSON.parse(userStr) : null;
+        const myName = user?.name || "Someone";
+        
         // Emit socket event to notify the sender
         if (socket && currentNotification) {
+          console.log("📤 Emitting connection-response-sent");
           socket.emit("connection-response-sent", {
             toProfileId: currentNotification.fromProfile._id,
             fromProfileId: profileId,
-            fromName: "User", // You can get this from localStorage
+            fromName: myName,
             action: "accepted",
             requestId,
           });
         }
 
-        // ✅ NEW: Redirect to chat with the person who sent the request
+        // ✅ Redirect to chat with the person who sent the request
         const otherProfileId = currentNotification?.fromProfile._id;
         if (otherProfileId) {
           console.log("💬 Redirecting to chat with:", otherProfileId);
@@ -173,12 +195,18 @@ export default function NotificationWrapper() {
       if (data.success) {
         console.log("❌ Connection rejected");
         
+        // ✅ Get user name from localStorage
+        const userStr = localStorage.getItem("myshine_user");
+        const user = userStr ? JSON.parse(userStr) : null;
+        const myName = user?.name || "Someone";
+        
         // Emit socket event to notify the sender
         if (socket && currentNotification) {
+          console.log("📤 Emitting connection-response-sent (rejected)");
           socket.emit("connection-response-sent", {
             toProfileId: currentNotification.fromProfile._id,
             fromProfileId: profileId,
-            fromName: "User", // You can get this from localStorage
+            fromName: myName,
             action: "rejected",
             requestId,
           });
@@ -197,15 +225,30 @@ export default function NotificationWrapper() {
     setCurrentNotification(null);
   };
 
-  if (!currentNotification) return null;
+  const handleCloseResponse = () => {
+    setResponseNotification(null);
+  };
 
   return (
-    <ConnectionToast
-      fromProfile={currentNotification.fromProfile}
-      requestId={currentNotification.requestId}
-      onAccept={handleAccept}
-      onReject={handleReject}
-      onTimeout={handleTimeout}
-    />
+    <>
+      {currentNotification && (
+        <ConnectionToast
+          fromProfile={currentNotification.fromProfile}
+          requestId={currentNotification.requestId}
+          onAccept={handleAccept}
+          onReject={handleReject}
+          onTimeout={handleTimeout}
+        />
+      )}
+
+      {responseNotification && (
+        <ConnectionResponseToast
+          fromProfileId={responseNotification.fromProfileId}
+          fromName={responseNotification.fromName}
+          action={responseNotification.action}
+          onClose={handleCloseResponse}
+        />
+      )}
+    </>
   );
 }

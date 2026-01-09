@@ -3,6 +3,7 @@
 import { useEffect, useState, useRef } from "react";
 import { useRouter } from "next/navigation";
 import BottomNav from "../components/BottomNav";
+import { FiMoreVertical, FiSettings, FiLogOut, FiHelpCircle } from "react-icons/fi";
 
 type Tier = "bronze" | "silver" | "gold" | "";
 
@@ -22,8 +23,10 @@ export default function ProfilePage() {
 
   const [imagePreview, setImagePreview] = useState("");
   const [uploading, setUploading] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
 
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const menuRef = useRef<HTMLDivElement | null>(null);
 
   /* ---------------- USER ---------------- */
   const user =
@@ -52,7 +55,6 @@ export default function ProfilePage() {
           setBio(data.profile.bio || "");
           setGender(data.profile.gender || "");
 
-          // ✅ FIX: Only set tier if gender is male or female
           if (data.profile.gender === "male" || data.profile.gender === "female") {
             setTier(data.profile.tier || "");
           } else {
@@ -61,7 +63,6 @@ export default function ProfilePage() {
 
           setIsVerified(data.profile.isCameraVerified || false);
 
-          // ✅ NEW: Update localStorage with profileId if missing
           if (data.profile._id && !user.profileId) {
             const updatedUser = {
               ...user,
@@ -74,6 +75,23 @@ export default function ProfilePage() {
         }
       });
   }, []);
+
+  /* ---------------- CLOSE MENU ON OUTSIDE CLICK ---------------- */
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (menuRef.current && !menuRef.current.contains(event.target as Node)) {
+        setMenuOpen(false);
+      }
+    };
+
+    if (menuOpen) {
+      document.addEventListener("mousedown", handleClickOutside);
+    }
+
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+    };
+  }, [menuOpen]);
 
   /* ---------------- IMAGE PREVIEW ---------------- */
   const handleImageSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -149,7 +167,6 @@ export default function ProfilePage() {
         isCameraVerified: isVerified,
       };
 
-      // ✅ only include tier for male/female
       if (gender === "male" || gender === "female") {
         payload.tier = tier;
       }
@@ -163,7 +180,6 @@ export default function ProfilePage() {
       const data = await res.json();
 
       if (data.success) {
-        // ✅ NEW: Update localStorage with profileId and name
         const updatedUser = {
           ...user,
           profileId: data.profile._id,
@@ -172,12 +188,9 @@ export default function ProfilePage() {
         localStorage.setItem("myshine_user", JSON.stringify(updatedUser));
         console.log("✅ Profile saved with profileId:", data.profile._id);
 
-        // Update local state
         setProfile(data.profile);
 
         alert("Profile saved successfully");
-        
-        // ✅ Redirect to homepage after successful save
         router.push("/");
       } else {
         alert(data.message || "Failed to save profile");
@@ -190,10 +203,74 @@ export default function ProfilePage() {
     }
   };
 
+  /* ---------------- LOGOUT ---------------- */
+  const handleLogout = () => {
+    const confirmLogout = window.confirm("Are you sure you want to logout?");
+    if (!confirmLogout) return;
+
+    console.log("🚪 Logging out...");
+    localStorage.removeItem("myshine_user");
+    router.replace("/login");
+  };
+
+  /* ---------------- HELP ---------------- */
+  const handleHelp = () => {
+    setMenuOpen(false);
+    alert("Help & Support\n\nFor assistance, contact:\n📧 support@myshine.com\n📱 +1234567890\n\nOr visit our FAQ section.");
+  };
+
+  /* ---------------- SETTINGS ---------------- */
+  const handleSettings = () => {
+    setMenuOpen(false);
+    alert("Settings feature coming soon!\n\nYou'll be able to:\n• Manage privacy\n• Block users\n• Change preferences");
+  };
+
   return (
     <>
       <div className="min-h-screen bg-pink-50 flex justify-center px-4 pb-28">
-        <div className="w-full max-w-md md:max-w-xl bg-white rounded-xl shadow mt-6 p-6 md:p-8">
+        <div className="w-full max-w-md md:max-w-xl bg-white rounded-xl shadow mt-6 p-6 md:p-8 relative">
+
+          {/* 3 DOT MENU */}
+          <div className="absolute top-4 right-4 z-10" ref={menuRef}>
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                setMenuOpen(!menuOpen);
+              }}
+              className="p-2 hover:bg-gray-100 rounded-full transition-colors"
+              aria-label="Menu"
+            >
+              <FiMoreVertical size={24} className="text-gray-700" />
+            </button>
+
+            {menuOpen && (
+              <div className="absolute right-0 mt-2 w-48 bg-white border border-gray-200 rounded-lg shadow-xl overflow-hidden animate-fadeIn">
+                <button
+                  className="w-full text-left px-4 py-3 hover:bg-gray-50 transition-colors flex items-center gap-3 text-gray-700"
+                  onClick={handleHelp}
+                >
+                  <FiHelpCircle size={18} />
+                  <span>Help & Support</span>
+                </button>
+
+                <button
+                  className="w-full text-left px-4 py-3 hover:bg-gray-50 transition-colors flex items-center gap-3 text-gray-700 border-t border-gray-100"
+                  onClick={handleSettings}
+                >
+                  <FiSettings size={18} />
+                  <span>Settings</span>
+                </button>
+
+                <button
+                  className="w-full text-left px-4 py-3 hover:bg-red-50 transition-colors flex items-center gap-3 text-red-600 border-t border-gray-100"
+                  onClick={handleLogout}
+                >
+                  <FiLogOut size={18} />
+                  <span>Logout</span>
+                </button>
+              </div>
+            )}
+          </div>
 
           {/* PROFILE IMAGE */}
           <div className="flex flex-col items-center mb-6">
@@ -227,7 +304,7 @@ export default function ProfilePage() {
               <button
                 type="button"
                 onClick={() => fileInputRef.current?.click()}
-                className="absolute bottom-0 left-1/2 -translate-x-1/2 bg-pink-500 text-white text-xs px-3 py-1 rounded-full"
+                className="absolute bottom-0 left-1/2 -translate-x-1/2 bg-pink-500 text-white text-xs px-3 py-1 rounded-full hover:bg-pink-600 transition-colors"
               >
                 Edit
               </button>
@@ -237,7 +314,7 @@ export default function ProfilePage() {
               <button
                 onClick={handleImageUpload}
                 disabled={uploading}
-                className="mt-3 w-full bg-green-500 text-white text-xs py-2 rounded disabled:opacity-50"
+                className="mt-3 w-full bg-green-500 text-white text-xs py-2 rounded disabled:opacity-50 hover:bg-green-600 transition-colors"
               >
                 {uploading ? "Uploading..." : "Save Photo"}
               </button>
@@ -250,7 +327,7 @@ export default function ProfilePage() {
             <input
               value={name}
               onChange={(e) => setName(e.target.value)}
-              className="w-full mt-1 p-3 border rounded-lg"
+              className="w-full mt-1 p-3 border rounded-lg focus:outline-none focus:ring-2 focus:ring-pink-500"
             />
           </div>
 
@@ -261,7 +338,7 @@ export default function ProfilePage() {
               type="number"
               value={age}
               onChange={(e) => setAge(e.target.value)}
-              className="w-full mt-1 p-3 border rounded-lg"
+              className="w-full mt-1 p-3 border rounded-lg focus:outline-none focus:ring-2 focus:ring-pink-500"
             />
           </div>
 
@@ -272,7 +349,7 @@ export default function ProfilePage() {
               rows={4}
               value={bio}
               onChange={(e) => setBio(e.target.value)}
-              className="w-full mt-1 p-3 border rounded-lg resize-none"
+              className="w-full mt-1 p-3 border rounded-lg resize-none focus:outline-none focus:ring-2 focus:ring-pink-500"
             />
           </div>
 
@@ -285,12 +362,11 @@ export default function ProfilePage() {
                 const value = e.target.value;
                 setGender(value);
 
-                // clear tier ONLY for "other"
                 if (value === "other" || value === "") {
                   setTier("");
                 }
               }}
-              className="w-full mt-1 p-3 border rounded-lg"
+              className="w-full mt-1 p-3 border rounded-lg focus:outline-none focus:ring-2 focus:ring-pink-500"
             >
               <option value="">Select gender</option>
               <option value="male">Male</option>
@@ -306,7 +382,7 @@ export default function ProfilePage() {
               <select
                 value={tier}
                 onChange={(e) => setTier(e.target.value as Tier)}
-                className="w-full mt-1 p-3 border rounded-lg"
+                className="w-full mt-1 p-3 border rounded-lg focus:outline-none focus:ring-2 focus:ring-pink-500"
               >
                 <option value="">Select tier</option>
                 <option value="bronze">Bronze</option>
@@ -320,7 +396,7 @@ export default function ProfilePage() {
           {gender === "male" && !isVerified && (
             <button
               onClick={handleVerify}
-              className="w-full mb-4 py-3 border-2 border-pink-500 text-pink-500 rounded-lg font-semibold"
+              className="w-full mb-4 py-3 border-2 border-pink-500 text-pink-500 rounded-lg font-semibold hover:bg-pink-50 transition-colors"
             >
               Verify with Camera
             </button>
@@ -330,7 +406,7 @@ export default function ProfilePage() {
           <button
             onClick={saveProfile}
             disabled={loading}
-            className="w-full py-3 bg-pink-500 text-white rounded-lg font-semibold disabled:opacity-50"
+            className="w-full py-3 bg-pink-500 text-white rounded-lg font-semibold disabled:opacity-50 hover:bg-pink-600 transition-colors"
           >
             {loading ? "Saving..." : "Save Profile"}
           </button>
@@ -338,6 +414,23 @@ export default function ProfilePage() {
       </div>
 
       <BottomNav />
+
+      {/* ADD FADE-IN ANIMATION */}
+      <style jsx global>{`
+        @keyframes fadeIn {
+          from {
+            opacity: 0;
+            transform: translateY(-10px);
+          }
+          to {
+            opacity: 1;
+            transform: translateY(0);
+          }
+        }
+        .animate-fadeIn {
+          animation: fadeIn 0.2s ease-out;
+        }
+      `}</style>
     </>
   );
 }

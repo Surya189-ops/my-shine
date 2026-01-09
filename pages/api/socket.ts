@@ -76,9 +76,45 @@ export default function SocketHandler(
       });
     });
 
+    // ============ TYPING INDICATORS ============
+    socket.on("typing-start", (data: { roomId: string; profileId: string; name: string }) => {
+      console.log("⌨️ User started typing:", data.name, "in room:", data.roomId);
+      socket.to(data.roomId).emit("user-typing", {
+        profileId: data.profileId,
+        name: data.name,
+        isTyping: true,
+      });
+    });
+
+    socket.on("typing-stop", (data: { roomId: string; profileId: string }) => {
+      console.log("⏹️ User stopped typing:", data.profileId);
+      socket.to(data.roomId).emit("user-typing", {
+        profileId: data.profileId,
+        isTyping: false,
+      });
+    });
+
     // ============ CONNECTION REQUESTS ============
     // Notify user of new connection request (direct emit from API)
     // No listener needed here - API emits directly to room
+
+    // Notify sender of response (accepted/rejected)
+    socket.on("connection-response-sent", (data: {
+      toProfileId: string; // original sender
+      fromProfileId: string; // person who responded
+      fromName: string;
+      action: "accepted" | "rejected";
+      requestId: string;
+    }) => {
+      console.log(`✅ Sending connection response (${data.action}) to:`, data.toProfileId);
+      io.to(`user:${data.toProfileId}`).emit("connection-response-received", {
+        fromProfileId: data.fromProfileId,
+        fromName: data.fromName,
+        action: data.action,
+        requestId: data.requestId,
+        timestamp: new Date().toISOString(),
+      });
+    });
 
     // Notify sender of response (accepted/rejected)
     socket.on("connection-response-sent", (data: {

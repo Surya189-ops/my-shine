@@ -1,9 +1,12 @@
+// app/chat/[profileId]/page.tsx - Updated with In-Chat Search
 "use client";
 
-import { useEffect, useState, useRef } from "react";
+import { useEffect, useState, useRef, useCallback } from "react";
 import { useParams, useRouter } from "next/navigation";
-import { FiArrowLeft, FiSend, FiCheck } from "react-icons/fi";
+import { FiArrowLeft, FiSend, FiCheck, FiSearch } from "react-icons/fi";
 import { io, Socket } from "socket.io-client";
+import TypingIndicator from "@/app/components/TypingIndicator";
+import ChatSearch from "@/app/components/ChatSearch";
 
 type Message = {
   _id: string;
@@ -30,11 +33,18 @@ export default function ChatPage() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [newMessage, setNewMessage] = useState("");
   const [myProfileId, setMyProfileId] = useState<string>("");
+  const [myName, setMyName] = useState<string>("");
+  const [isOtherTyping, setIsOtherTyping] = useState(false);
+  const [isSearchOpen, setIsSearchOpen] = useState(false);
 
   const socketRef = useRef<Socket | null>(null);
   const bottomRef = useRef<HTMLDivElement | null>(null);
   const inputRef = useRef<HTMLInputElement | null>(null);
   const roomIdRef = useRef<string>("");
+  const typingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const isTypingRef = useRef(false);
+  const otherTypingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const messageRefs = useRef<{ [key: string]: HTMLDivElement }>({});
 
   /* -------- AUTH GUARD -------- */
   useEffect(() => {
@@ -53,7 +63,44 @@ export default function ChatPage() {
     }
 
     setMyProfileId(user.profileId);
+    setMyName(user.name || "User");
   }, [router]);
+
+  /* -------- TYPING HANDLERS -------- */
+  const startTyping = useCallback(() => {
+    if (!socketRef.current || !roomIdRef.current || isTypingRef.current) return;
+
+    console.log("⌨️ Emitting typing-start");
+    socketRef.current.emit("typing-start", {
+      roomId: roomIdRef.current,
+      profileId: myProfileId,
+      name: myName,
+    });
+    isTypingRef.current = true;
+  }, [myProfileId, myName]);
+
+  const stopTyping = useCallback(() => {
+    if (!socketRef.current || !roomIdRef.current || !isTypingRef.current) return;
+
+    console.log("⏹️ Emitting typing-stop");
+    socketRef.current.emit("typing-stop", {
+      roomId: roomIdRef.current,
+      profileId: myProfileId,
+    });
+    isTypingRef.current = false;
+  }, [myProfileId]);
+
+  const handleTyping = useCallback(() => {
+    startTyping();
+
+    if (typingTimeoutRef.current) {
+      clearTimeout(typingTimeoutRef.current);
+    }
+
+    typingTimeoutRef.current = setTimeout(() => {
+      stopTyping();
+    }, 2000);
+  }, [startTyping, stopTyping]);
 
   /* -------- SOCKET SETUP -------- */
   useEffect(() => {
@@ -73,9 +120,13 @@ export default function ChatPage() {
 
       socket.emit("join-room", roomId);
 
-      // ✅ Receive message
       socket.off("receive-message").on("receive-message", (data: any) => {
         console.log("📩 Socket received message:", data);
+
+        setIsOtherTyping(false);
+        if (otherTypingTimeoutRef.current) {
+          clearTimeout(otherTypingTimeoutRef.current);
+        }
 
         setMessages((prev) => {
           if (prev.some((m) => m._id === data._id)) return prev;
@@ -90,7 +141,6 @@ export default function ChatPage() {
             createdAt: data.createdAt,
           };
 
-          // ✅ Emit delivery receipt immediately
           socket.emit("message-delivered", {
             roomId,
             messageId: data._id,
@@ -100,7 +150,27 @@ export default function ChatPage() {
         });
       });
 
-      // ✅ Single message status update (delivered)
+      socket.off("user-typing").on("user-typing", (data: any) => {
+        console.log("⌨️ User typing event:", data);
+        
+        if (data.profileId !== myProfileId) {
+          setIsOtherTyping(data.isTyping);
+
+          if (data.isTyping) {
+            if (otherTypingTimeoutRef.current) {
+              clearTimeout(otherTypingTimeoutRef.current);
+            }
+            otherTypingTimeoutRef.current = setTimeout(() => {
+              setIsOtherTyping(false);
+            }, 3000);
+          } else {
+            if (otherTypingTimeoutRef.current) {
+              clearTimeout(otherTypingTimeoutRef.current);
+            }
+          }
+        }
+      });
+
       socket.off("message-status-update").on("message-status-update", (data: any) => {
         console.log("📬 Message status update:", data);
         
@@ -113,7 +183,6 @@ export default function ChatPage() {
         );
       });
 
-      // ✅ Multiple messages status update (read)
       socket.off("messages-status-update").on("messages-status-update", (data: any) => {
         console.log("👁️ Messages status update:", data);
         
@@ -130,10 +199,17 @@ export default function ChatPage() {
     initSocket();
 
     return () => {
+      stopTyping();
+      if (typingTimeoutRef.current) {
+        clearTimeout(typingTimeoutRef.current);
+      }
+      if (otherTypingTimeoutRef.current) {
+        clearTimeout(otherTypingTimeoutRef.current);
+      }
       socketRef.current?.disconnect();
       socketRef.current = null;
     };
-  }, [myProfileId, otherProfileId]);
+  }, [myProfileId, otherProfileId, stopTyping]);
 
   /* -------- FETCH PROFILE -------- */
   useEffect(() => {
@@ -157,8 +233,6 @@ export default function ChatPage() {
         console.log("✅ Messages fetched:", data);
         if (data.success) {
           setMessages(data.messages);
-          
-          // ✅ Mark unread messages as read
           markMessagesAsRead(data.messages);
         }
       })
@@ -167,7 +241,6 @@ export default function ChatPage() {
 
   /* -------- MARK MESSAGES AS READ -------- */
   const markMessagesAsRead = async (msgs: Message[]) => {
-    // Find messages where I'm the receiver and they're not read
     const unreadIds = msgs
       .filter(
         (m) =>
@@ -179,7 +252,6 @@ export default function ChatPage() {
     if (unreadIds.length === 0) return;
 
     try {
-      // Update in database
       await fetch("/api/chat/mark-read", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -189,14 +261,12 @@ export default function ChatPage() {
         }),
       });
 
-      // Update UI
       setMessages((prev) =>
         prev.map((m) =>
           unreadIds.includes(m._id) ? { ...m, read: true } : m
         )
       );
 
-      // Emit to socket
       if (socketRef.current) {
         socketRef.current.emit("messages-read", {
           roomId: roomIdRef.current,
@@ -208,18 +278,31 @@ export default function ChatPage() {
     }
   };
 
-  /* -------- AUTO SCROLL & MARK AS READ -------- */
+  /* -------- AUTO SCROLL -------- */
   const lastMessageCountRef = useRef(0);
 
   useEffect(() => {
-    if (messages.length > lastMessageCountRef.current) {
+    if (messages.length > lastMessageCountRef.current || isOtherTyping) {
       bottomRef.current?.scrollIntoView({ behavior: "smooth" });
       lastMessageCountRef.current = messages.length;
 
-      // Mark new messages as read
-      markMessagesAsRead(messages);
+      if (messages.length > 0) {
+        markMessagesAsRead(messages);
+      }
     }
-  }, [messages]);
+  }, [messages, isOtherTyping]);
+
+  /* -------- SEARCH RESULT HANDLER -------- */
+  const handleSearchResultClick = useCallback((messageId: string) => {
+    const messageElement = messageRefs.current[messageId];
+    if (messageElement) {
+      messageElement.scrollIntoView({ behavior: "smooth", block: "center" });
+      messageElement.classList.add("bg-yellow-100");
+      setTimeout(() => {
+        messageElement.classList.remove("bg-yellow-100");
+      }, 2000);
+    }
+  }, []);
 
   /* -------- SEND MESSAGE -------- */
   const handleSend = async () => {
@@ -228,6 +311,8 @@ export default function ChatPage() {
     const text = newMessage.trim();
     setNewMessage("");
     inputRef.current?.focus();
+
+    stopTyping();
 
     console.log("📤 Sending message:", {
       senderProfileId: myProfileId,
@@ -286,7 +371,6 @@ export default function ChatPage() {
     if (message.senderProfileId !== myProfileId) return null;
 
     if (message.read) {
-      // Double blue ticks
       return (
         <span className="inline-flex ml-1">
           <FiCheck size={14} className="text-blue-500 -mr-2" />
@@ -296,7 +380,6 @@ export default function ChatPage() {
     }
 
     if (message.delivered) {
-      // Double grey ticks
       return (
         <span className="inline-flex ml-1">
           <FiCheck size={14} className="text-gray-400 -mr-2" />
@@ -305,7 +388,6 @@ export default function ChatPage() {
       );
     }
 
-    // Single grey tick (sent)
     return (
       <span className="inline-flex ml-1">
         <FiCheck size={14} className="text-gray-400" />
@@ -317,32 +399,51 @@ export default function ChatPage() {
     <div className="flex flex-col h-screen bg-pink-50">
       {/* HEADER */}
       <div className="flex items-center justify-between px-4 py-3 bg-white shadow">
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-3 flex-1 min-w-0">
           <button onClick={() => router.back()}>
             <FiArrowLeft size={20} />
           </button>
 
           <div
             onClick={() => router.push(`/profile/${otherProfileId}`)}
-            className="flex items-center gap-3 cursor-pointer"
+            className="flex items-center gap-3 cursor-pointer flex-1 min-w-0"
           >
             {profile?.imageUrl ? (
               <img
                 src={profile.imageUrl}
-                className="w-9 h-9 rounded-full object-cover"
+                className="w-9 h-9 rounded-full object-cover flex-shrink-0"
                 alt={profile.name}
               />
             ) : (
-              <div className="w-9 h-9 rounded-full bg-gray-300" />
+              <div className="w-9 h-9 rounded-full bg-gray-300 flex-shrink-0" />
             )}
 
-            <div>
-              <p className="text-sm font-semibold">{profile?.name || "Loading..."}</p>
-              <p className="text-xs text-gray-400">Online</p>
+            <div className="min-w-0">
+              <p className="text-sm font-semibold truncate">{profile?.name || "Loading..."}</p>
+              <p className="text-xs text-gray-400">
+                {isOtherTyping ? "typing..." : "Online"}
+              </p>
             </div>
           </div>
         </div>
+
+        {/* Search Button */}
+        <button
+          onClick={() => setIsSearchOpen(!isSearchOpen)}
+          className="p-2 hover:bg-gray-100 rounded-full transition-colors flex-shrink-0"
+        >
+          <FiSearch size={20} className={isSearchOpen ? "text-pink-500" : "text-gray-600"} />
+        </button>
       </div>
+
+      {/* SEARCH BAR */}
+      {isSearchOpen && (
+        <ChatSearch
+          messages={messages}
+          onResultClick={handleSearchResultClick}
+          onClose={() => setIsSearchOpen(false)}
+        />
+      )}
 
       {/* MESSAGES */}
       <div className="flex-1 overflow-y-auto px-4 py-3 space-y-3">
@@ -358,7 +459,10 @@ export default function ChatPage() {
           return (
             <div
               key={msg._id}
-              className={`flex ${isMine ? "justify-end" : "justify-start"}`}
+              ref={(el) => {
+                if (el) messageRefs.current[msg._id] = el;
+              }}
+              className={`flex ${isMine ? "justify-end" : "justify-start"} transition-colors duration-500`}
             >
               <div
                 className={`px-4 py-2 rounded-2xl text-sm max-w-[70%] ${
@@ -375,6 +479,14 @@ export default function ChatPage() {
             </div>
           );
         })}
+
+        {/* TYPING INDICATOR */}
+        {isOtherTyping && (
+          <div className="flex justify-start">
+            <TypingIndicator />
+          </div>
+        )}
+        
         <div ref={bottomRef} />
       </div>
 
@@ -383,7 +495,10 @@ export default function ChatPage() {
         <input
           ref={inputRef}
           value={newMessage}
-          onChange={(e) => setNewMessage(e.target.value)}
+          onChange={(e) => {
+            setNewMessage(e.target.value);
+            handleTyping();
+          }}
           onKeyDown={(e) => {
             if (e.key === "Enter" && !e.shiftKey) {
               e.preventDefault();
