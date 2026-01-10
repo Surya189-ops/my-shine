@@ -1,3 +1,4 @@
+// models/Message.ts - Updated with Edit/Delete support
 import mongoose, { Schema, models, model } from "mongoose";
 
 const MessageSchema = new Schema(
@@ -30,6 +31,35 @@ const MessageSchema = new Schema(
     },
     readAt: {
       type: Date,
+    },
+    
+    // -------- EDIT FIELDS --------
+    isEdited: {
+      type: Boolean,
+      default: false,
+    },
+    editedAt: {
+      type: Date,
+    },
+    originalText: {
+      type: String, // Store original text before first edit
+    },
+    
+    // -------- DELETE FIELDS --------
+    isDeleted: {
+      type: Boolean,
+      default: false,
+    },
+    deletedAt: {
+      type: Date,
+    },
+    deletedBy: {
+      type: String, // "sender" | "both" | null
+      default: null,
+    },
+    deletedForEveryone: {
+      type: Boolean,
+      default: false,
     },
   },
   { timestamps: true }

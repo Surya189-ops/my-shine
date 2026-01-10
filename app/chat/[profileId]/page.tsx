@@ -1,4 +1,4 @@
-// app/chat/[profileId]/page.tsx - Updated with Block/Report
+// app/chat/[profileId]/page.tsx - With Edit/Delete (No Block/Report)
 "use client";
 
 import { useEffect, useState, useRef, useCallback } from "react";
@@ -7,7 +7,8 @@ import { FiArrowLeft, FiSend, FiCheck, FiSearch } from "react-icons/fi";
 import { io, Socket } from "socket.io-client";
 import TypingIndicator from "@/app/components/TypingIndicator";
 import ChatSearch from "@/app/components/ChatSearch";
-import BlockReportMenu from "@/app/components/BlockReportMenu";
+import MessageContextMenu from "@/app/components/MessageContextMenu";
+import EditMessageModal from "@/app/components/EditMessageModal";
 
 type Message = {
   _id: string;
@@ -17,6 +18,11 @@ type Message = {
   delivered?: boolean;
   read?: boolean;
   createdAt: string;
+  isEdited?: boolean;
+  editedAt?: string;
+  isDeleted?: boolean;
+  deletedBy?: string | null;
+  deletedForEveryone?: boolean;
 };
 
 type Profile = {
@@ -24,6 +30,14 @@ type Profile = {
   name: string;
   imageUrl?: string;
 };
+
+type ContextMenuState = {
+  messageId: string;
+  messageText: string;
+  messageCreatedAt: string;
+  isMine: boolean;
+  position: { x: number; y: number };
+} | null;
 
 export default function ChatPage() {
   const router = useRouter();
@@ -37,8 +51,8 @@ export default function ChatPage() {
   const [myName, setMyName] = useState<string>("");
   const [isOtherTyping, setIsOtherTyping] = useState(false);
   const [isSearchOpen, setIsSearchOpen] = useState(false);
-  const [isBlocked, setIsBlocked] = useState(false);
-  const [isBlockedBy, setIsBlockedBy] = useState(false);
+  const [contextMenu, setContextMenu] = useState<ContextMenuState>(null);
+  const [editingMessage, setEditingMessage] = useState<{ id: string; text: string } | null>(null);
 
   const socketRef = useRef<Socket | null>(null);
   const bottomRef = useRef<HTMLDivElement | null>(null);
@@ -69,24 +83,9 @@ export default function ChatPage() {
     setMyName(user.name || "User");
   }, [router]);
 
-  /* -------- CHECK BLOCK STATUS -------- */
-  useEffect(() => {
-    if (!myProfileId) return;
-
-    fetch(`/api/block/check?myProfileId=${myProfileId}&otherProfileId=${otherProfileId}`)
-      .then((res) => res.json())
-      .then((data) => {
-        if (data.success) {
-          setIsBlocked(data.isBlocked);
-          setIsBlockedBy(data.isBlockedBy);
-        }
-      })
-      .catch((err) => console.error("Check block error:", err));
-  }, [myProfileId, otherProfileId]);
-
   /* -------- TYPING HANDLERS -------- */
   const startTyping = useCallback(() => {
-    if (!socketRef.current || !roomIdRef.current || isTypingRef.current || isBlockedBy) return;
+    if (!socketRef.current || !roomIdRef.current || isTypingRef.current) return;
 
     console.log("⌨️ Emitting typing-start");
     socketRef.current.emit("typing-start", {
@@ -95,7 +94,7 @@ export default function ChatPage() {
       name: myName,
     });
     isTypingRef.current = true;
-  }, [myProfileId, myName, isBlockedBy]);
+  }, [myProfileId, myName]);
 
   const stopTyping = useCallback(() => {
     if (!socketRef.current || !roomIdRef.current || !isTypingRef.current) return;
@@ -109,8 +108,6 @@ export default function ChatPage() {
   }, [myProfileId]);
 
   const handleTyping = useCallback(() => {
-    if (isBlockedBy) return;
-    
     startTyping();
 
     if (typingTimeoutRef.current) {
@@ -120,7 +117,7 @@ export default function ChatPage() {
     typingTimeoutRef.current = setTimeout(() => {
       stopTyping();
     }, 2000);
-  }, [startTyping, stopTyping, isBlockedBy]);
+  }, [startTyping, stopTyping]);
 
   /* -------- SOCKET SETUP -------- */
   useEffect(() => {
@@ -143,12 +140,6 @@ export default function ChatPage() {
       socket.off("receive-message").on("receive-message", (data: any) => {
         console.log("📩 Socket received message:", data);
 
-        // Don't show messages if blocked
-        if (isBlocked || isBlockedBy) {
-          console.log("🚫 Message blocked");
-          return;
-        }
-
         setIsOtherTyping(false);
         if (otherTypingTimeoutRef.current) {
           clearTimeout(otherTypingTimeoutRef.current);
@@ -165,6 +156,11 @@ export default function ChatPage() {
             delivered: true,
             read: false,
             createdAt: data.createdAt,
+            isEdited: data.isEdited || false,
+            editedAt: data.editedAt,
+            isDeleted: data.isDeleted || false,
+            deletedBy: data.deletedBy || null,
+            deletedForEveryone: data.deletedForEveryone || false,
           };
 
           socket.emit("message-delivered", {
@@ -176,10 +172,48 @@ export default function ChatPage() {
         });
       });
 
+      // Listen for message edits
+      socket.off("message-edited").on("message-edited", (data: any) => {
+        console.log("✏️ Message edited:", data);
+        
+        setMessages((prev) =>
+          prev.map((m) =>
+            m._id === data.messageId
+              ? {
+                  ...m,
+                  text: data.newText,
+                  isEdited: true,
+                  editedAt: data.editedAt,
+                }
+              : m
+          )
+        );
+      });
+
+      // Listen for message deletes
+      socket.off("message-deleted").on("message-deleted", (data: any) => {
+        console.log("🗑️ Message deleted:", data);
+        
+        if (data.deletedForEveryone) {
+          setMessages((prev) =>
+            prev.map((m) =>
+              m._id === data.messageId
+                ? {
+                    ...m,
+                    isDeleted: true,
+                    deletedForEveryone: true,
+                    // Keep text in state but UI shows deletion message
+                  }
+                : m
+            )
+          );
+        }
+      });
+
       socket.off("user-typing").on("user-typing", (data: any) => {
         console.log("⌨️ User typing event:", data);
        
-        if (data.profileId !== myProfileId && !isBlocked && !isBlockedBy) {
+        if (data.profileId !== myProfileId) {
           setIsOtherTyping(data.isTyping);
 
           if (data.isTyping) {
@@ -235,7 +269,7 @@ export default function ChatPage() {
       socketRef.current?.disconnect();
       socketRef.current = null;
     };
-  }, [myProfileId, otherProfileId, stopTyping, isBlocked, isBlockedBy]);
+  }, [myProfileId, otherProfileId, stopTyping]);
 
   /* -------- FETCH PROFILE -------- */
   useEffect(() => {
@@ -258,27 +292,21 @@ export default function ChatPage() {
       .then((data) => {
         console.log("✅ Messages fetched:", data);
         if (data.success) {
-          // Hide messages if blocked
-          if (isBlocked) {
-            setMessages([]);
-          } else {
-            setMessages(data.messages);
-            markMessagesAsRead(data.messages);
-          }
+          setMessages(data.messages);
+          markMessagesAsRead(data.messages);
         }
       })
       .catch((err) => console.error("Fetch messages error:", err));
-  }, [myProfileId, otherProfileId, isBlocked]);
+  }, [myProfileId, otherProfileId]);
 
   /* -------- MARK MESSAGES AS READ -------- */
   const markMessagesAsRead = async (msgs: Message[]) => {
-    if (isBlockedBy) return;
-
     const unreadIds = msgs
       .filter(
         (m) =>
           m.receiverProfileId === myProfileId &&
-          !m.read
+          !m.read &&
+          !m.isDeleted
       )
       .map((m) => m._id);
 
@@ -337,26 +365,124 @@ export default function ChatPage() {
     }
   }, []);
 
-  /* -------- BLOCK STATUS CHANGE -------- */
-  const handleBlockStatusChange = (blocked: boolean) => {
-    setIsBlocked(blocked);
-    if (blocked) {
-      setMessages([]);
-    } else {
-      // Reload messages
-      fetch(`/api/chat?myProfileId=${myProfileId}&otherProfileId=${otherProfileId}`)
-        .then((res) => res.json())
-        .then((data) => {
-          if (data.success) {
-            setMessages(data.messages);
+  /* -------- CONTEXT MENU HANDLERS -------- */
+  const handleLongPress = (
+    e: React.MouseEvent | React.TouchEvent,
+    message: Message
+  ) => {
+    e.preventDefault();
+    
+    // Don't show menu for deleted messages
+    if (message.isDeleted) return;
+
+    const x = "touches" in e ? e.touches[0].clientX : e.clientX;
+    const y = "touches" in e ? e.touches[0].clientY : e.clientY;
+
+    setContextMenu({
+      messageId: message._id,
+      messageText: message.text,
+      messageCreatedAt: message.createdAt,
+      isMine: message.senderProfileId === myProfileId,
+      position: { x, y },
+    });
+  };
+
+  /* -------- EDIT MESSAGE -------- */
+  const handleEditMessage = async (messageId: string, newText: string) => {
+    try {
+      const res = await fetch("/api/chat/edit", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          messageId,
+          newText,
+          profileId: myProfileId,
+        }),
+      });
+
+      const data = await res.json();
+
+      if (data.success) {
+        // Update local state
+        setMessages((prev) =>
+          prev.map((m) =>
+            m._id === messageId
+              ? {
+                  ...m,
+                  text: newText,
+                  isEdited: true,
+                  editedAt: data.message.editedAt,
+                }
+              : m
+          )
+        );
+
+        // Emit socket event
+        if (socketRef.current && data.socketData) {
+          socketRef.current.emit("edit-message", data.socketData);
+        }
+
+        setEditingMessage(null);
+      } else {
+        alert(data.message || "Failed to edit message");
+      }
+    } catch (err) {
+      console.error("Edit message error:", err);
+      alert("Failed to edit message");
+    }
+  };
+
+  /* -------- DELETE MESSAGE -------- */
+  const handleDeleteMessage = async (messageId: string, deleteForEveryone: boolean) => {
+    try {
+      const res = await fetch("/api/chat/delete", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          messageId,
+          profileId: myProfileId,
+          deleteForEveryone,
+        }),
+      });
+
+      const data = await res.json();
+
+      if (data.success) {
+        if (deleteForEveryone) {
+          // Update local state for delete for everyone
+          setMessages((prev) =>
+            prev.map((m) =>
+              m._id === messageId
+                ? {
+                    ...m,
+                    isDeleted: true,
+                    deletedForEveryone: true,
+                    // Keep text in state but UI will show deletion message
+                  }
+                : m
+            )
+          );
+
+          // Emit socket event
+          if (socketRef.current && data.socketData) {
+            socketRef.current.emit("delete-message", data.socketData);
           }
-        });
+        } else {
+          // Delete for me only - remove from local state
+          setMessages((prev) => prev.filter((m) => m._id !== messageId));
+        }
+      } else {
+        alert(data.message || "Failed to delete message");
+      }
+    } catch (err) {
+      console.error("Delete message error:", err);
+      alert("Failed to delete message");
     }
   };
 
   /* -------- SEND MESSAGE -------- */
   const handleSend = async () => {
-    if (!newMessage.trim() || !myProfileId || isBlockedBy) return;
+    if (!newMessage.trim() || !myProfileId) return;
 
     const text = newMessage.trim();
     setNewMessage("");
@@ -394,6 +520,8 @@ export default function ChatPage() {
           delivered: false,
           read: false,
           createdAt: data.message.createdAt || new Date().toISOString(),
+          isEdited: false,
+          isDeleted: false,
         };
 
         setMessages((prev) => [...prev, newMsg]);
@@ -445,6 +573,32 @@ export default function ChatPage() {
     );
   };
 
+  /* -------- RENDER DELETED MESSAGE -------- */
+  const renderDeletedMessage = (message: Message) => {
+    const isMine = message.senderProfileId === myProfileId;
+    
+    return (
+      <div
+        className={`px-4 py-2 rounded-2xl text-sm max-w-[70%] ${
+          isMine
+            ? "bg-pink-100 text-gray-500 rounded-br-none"
+            : "bg-gray-100 text-gray-500 shadow rounded-bl-none"
+        }`}
+      >
+        <div className="flex items-center gap-2 italic">
+          <span className="text-xs">🚫</span>
+          <span>
+            {message.deletedForEveryone
+              ? isMine
+                ? "You deleted this message"
+                : "This message was deleted"
+              : "Message deleted"}
+          </span>
+        </div>
+      </div>
+    );
+  };
+
   return (
     <div className="flex flex-col h-screen bg-pink-50">
       {/* HEADER */}
@@ -485,15 +639,6 @@ export default function ChatPage() {
           >
             <FiSearch size={20} className={isSearchOpen ? "text-pink-500" : "text-gray-600"} />
           </button>
-
-          {/* Block/Report Menu */}
-          <BlockReportMenu
-            myProfileId={myProfileId}
-            otherProfileId={otherProfileId}
-            otherProfileName={profile?.name || "User"}
-            isBlocked={isBlocked}
-            onBlockStatusChange={handleBlockStatusChange}
-          />
         </div>
       </div>
 
@@ -506,26 +651,9 @@ export default function ChatPage() {
         />
       )}
 
-      {/* BLOCKED MESSAGE */}
-      {isBlocked && (
-        <div className="bg-yellow-50 border-b border-yellow-200 px-4 py-2 text-center text-sm text-yellow-800">
-          You have blocked this user. Unblock to send messages.
-        </div>
-      )}
-
-      {isBlockedBy && (
-        <div className="bg-red-50 border-b border-red-200 px-4 py-2 text-center text-sm text-red-800">
-          You cannot send messages to this user.
-        </div>
-      )}
-
       {/* MESSAGES */}
       <div className="flex-1 overflow-y-auto px-4 py-3 space-y-3">
-        {isBlocked ? (
-          <div className="text-center text-gray-400 text-sm mt-10">
-            Chat history hidden. Unblock to view messages.
-          </div>
-        ) : messages.length === 0 ? (
+        {messages.length === 0 ? (
           <div className="text-center text-gray-400 text-sm mt-10">
             No messages yet. Start the conversation! 👋
           </div>
@@ -540,26 +668,42 @@ export default function ChatPage() {
                   if (el) messageRefs.current[msg._id] = el;
                 }}
                 className={`flex ${isMine ? "justify-end" : "justify-start"} transition-colors duration-500`}
+                onContextMenu={(e) => handleLongPress(e, msg)}
+                onTouchStart={(e) => {
+                  const timer = setTimeout(() => handleLongPress(e, msg), 500);
+                  e.currentTarget.ontouchend = () => clearTimeout(timer);
+                }}
               >
-                <div
-                  className={`px-4 py-2 rounded-2xl text-sm max-w-[70%] ${
-                    isMine
-                      ? "bg-pink-500 text-white rounded-br-none"
-                      : "bg-white shadow rounded-bl-none"
-                  }`}
-                >
-                  <div className="flex items-end gap-1">
-                    <span>{msg.text}</span>
-                    {isMine && <MessageTicks message={msg} />}
+                {msg.isDeleted ? (
+                  renderDeletedMessage(msg)
+                ) : (
+                  <div
+                    className={`px-4 py-2 rounded-2xl text-sm max-w-[70%] ${
+                      isMine
+                        ? "bg-pink-500 text-white rounded-br-none"
+                        : "bg-white shadow rounded-bl-none"
+                    }`}
+                  >
+                    <div className="flex items-end gap-1">
+                      <div className="flex flex-col">
+                        <span>{msg.text}</span>
+                        {msg.isEdited && (
+                          <span className={`text-xs mt-1 ${isMine ? "text-pink-200" : "text-gray-400"}`}>
+                            edited
+                          </span>
+                        )}
+                      </div>
+                      {isMine && <MessageTicks message={msg} />}
+                    </div>
                   </div>
-                </div>
+                )}
               </div>
             );
           })
         )}
 
         {/* TYPING INDICATOR */}
-        {isOtherTyping && !isBlocked && (
+        {isOtherTyping && (
           <div className="flex justify-start">
             <TypingIndicator />
           </div>
@@ -583,20 +727,43 @@ export default function ChatPage() {
               handleSend();
             }
           }}
-          placeholder={isBlockedBy ? "You cannot send messages" : "Type a message…"}
-          disabled={isBlockedBy}
-          className="flex-1 px-4 py-2 border rounded-full text-sm focus:outline-none focus:ring-2 focus:ring-pink-500 disabled:bg-gray-100 disabled:cursor-not-allowed"
+          placeholder="Type a message…"
+          className="flex-1 px-4 py-2 border rounded-full text-sm focus:outline-none focus:ring-2 focus:ring-pink-500"
         />
 
         <button
           type="button"
           onClick={handleSend}
-          disabled={!newMessage.trim() || isBlockedBy}
+          disabled={!newMessage.trim()}
           className="bg-pink-500 text-white p-2 rounded-full disabled:bg-gray-300 transition-colors"
         >
           <FiSend />
         </button>
       </div>
+
+      {/* CONTEXT MENU */}
+      {contextMenu && (
+        <MessageContextMenu
+          messageId={contextMenu.messageId}
+          messageText={contextMenu.messageText}
+          isMine={contextMenu.isMine}
+          messageCreatedAt={contextMenu.messageCreatedAt}
+          onEdit={(id, text) => setEditingMessage({ id, text })}
+          onDelete={handleDeleteMessage}
+          onClose={() => setContextMenu(null)}
+          position={contextMenu.position}
+        />
+      )}
+
+      {/* EDIT MODAL */}
+      {editingMessage && (
+        <EditMessageModal
+          messageId={editingMessage.id}
+          currentText={editingMessage.text}
+          onSave={handleEditMessage}
+          onCancel={() => setEditingMessage(null)}
+        />
+      )}
     </div>
   );
 }
