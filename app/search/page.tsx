@@ -1,10 +1,10 @@
-// app/search/page.tsx - Dedicated Profile Search Page
+// app/search/page.tsx
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import BottomNav from "../components/BottomNav";
-import { FiSearch } from "react-icons/fi";
+import { FiSearch, FiX } from "react-icons/fi";
 
 type Tier = "bronze" | "silver" | "gold";
 type Gender = "male" | "female";
@@ -43,11 +43,14 @@ export default function SearchPage() {
   const router = useRouter();
   
   const [searchQuery, setSearchQuery] = useState("");
-  const [allProfiles, setAllProfiles] = useState<Profile[]>([]);
-  const [filteredProfiles, setFilteredProfiles] = useState<Profile[]>([]);
+  const [suggestions, setSuggestions] = useState<Profile[]>([]);
   const [loading, setLoading] = useState(false);
   const [myGender, setMyGender] = useState<Gender | null>(null);
-  const [requestedProfiles, setRequestedProfiles] = useState<Set<string>>(new Set());
+  const [showSuggestions, setShowSuggestions] = useState(false);
+  const [recentSearches, setRecentSearches] = useState<Profile[]>([]);
+  
+  const searchTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const searchInputRef = useRef<HTMLInputElement>(null);
 
   // Get current user's gender
   useEffect(() => {
@@ -69,278 +72,312 @@ export default function SearchPage() {
       .then((data) => {
         if (data.success) {
           setMyGender(data.profile.gender);
+          console.log("👤 Current user gender:", data.profile.gender);
         }
       })
       .catch((err) => console.error("Error fetching user profile:", err));
+
+    // Load recent searches
+    const recent = localStorage.getItem("recent_searches");
+    if (recent) {
+      try {
+        setRecentSearches(JSON.parse(recent));
+      } catch (e) {
+        console.error("Failed to parse recent searches");
+      }
+    }
   }, [router]);
 
-  // Fetch all profiles when user's gender is known
+  // Debounced search function
   useEffect(() => {
+    if (searchTimeoutRef.current) {
+      clearTimeout(searchTimeoutRef.current);
+    }
+
+    // Show suggestions if input is focused and has text
+    if (searchQuery.trim().length === 0) {
+      setSuggestions([]);
+      return;
+    }
+
+    if (!myGender) {
+      return;
+    }
+
+    // Set new timeout for search (300ms debounce - faster for suggestions)
+    searchTimeoutRef.current = setTimeout(() => {
+      performSearch();
+    }, 300);
+
+    return () => {
+      if (searchTimeoutRef.current) {
+        clearTimeout(searchTimeoutRef.current);
+      }
+    };
+  }, [searchQuery, myGender]);
+
+  const performSearch = async () => {
     if (!myGender) return;
 
     setLoading(true);
-    // Fetch opposite gender profiles
-    const oppositeGender = myGender === "male" ? "female" : "male";
-    
-    fetch(`/api/profiles?gender=${oppositeGender}`)
-      .then((res) => res.json())
-      .then((data) => {
-        if (data.success) {
-          // Filter by allowed countries
-          const allowedCountries = myGender === "male" ? WOMEN_COUNTRIES : MEN_COUNTRIES;
-          const filtered = data.profiles.filter((p: Profile) => 
-            !p.country || allowedCountries.includes(p.country)
-          );
-          setAllProfiles(filtered);
-        }
-        setLoading(false);
-      })
-      .catch((err) => {
-        console.error("Error fetching profiles:", err);
-        setLoading(false);
-      });
-  }, [myGender]);
-
-  // Search functionality
-  useEffect(() => {
-    if (!searchQuery.trim()) {
-      setFilteredProfiles([]);
-      return;
-    }
-
-    const query = searchQuery.toLowerCase();
-    const results = allProfiles.filter((profile) =>
-      profile.name.toLowerCase().includes(query)
-    );
-    setFilteredProfiles(results);
-  }, [searchQuery, allProfiles]);
-
-  const handleConnect = async (e: React.MouseEvent, profileId: string) => {
-    e.stopPropagation();
-
-    if (!isRealProfile(profileId)) {
-      return;
-    }
-
-    const userStr = localStorage.getItem("myshine_user");
-    if (!userStr) {
-      alert("Please login first");
-      return;
-    }
-
-    const user = JSON.parse(userStr);
-
-    if (!user.profileId) {
-      alert("Profile not found. Please complete your profile.");
-      return;
-    }
+    console.log("🔍 Searching for:", searchQuery);
 
     try {
-      const res = await fetch("/api/connections/request", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          fromProfileId: user.profileId,
-          toProfileId: profileId,
-        }),
-      });
-
+      const oppositeGender = myGender === "male" ? "female" : "male";
+      
+      const res = await fetch(
+        `/api/profiles/search?q=${encodeURIComponent(searchQuery)}`
+      );
+      
       const data = await res.json();
 
       if (data.success) {
-        setRequestedProfiles((prev) => new Set(prev).add(profileId));
-        console.log("✅ Connection request sent successfully");
+        const allowedCountries = myGender === "male" ? WOMEN_COUNTRIES : MEN_COUNTRIES;
+        const filtered = data.profiles.filter((p: Profile) => 
+          !p.country || allowedCountries.includes(p.country)
+        );
+        
+        setSuggestions(filtered.slice(0, 10)); // Limit to 10 suggestions
+        setShowSuggestions(true);
       } else {
-        alert(data.message || "Request already sent");
+        setSuggestions([]);
       }
     } catch (err) {
-      console.error("❌ Connection request error:", err);
-      alert("Something went wrong");
+      console.error("❌ Search error:", err);
+      setSuggestions([]);
+    } finally {
+      setLoading(false);
     }
   };
 
-  const handleProfileClick = (profileId: string) => {
-    if (!isRealProfile(profileId)) {
-      return;
-    }
-    router.push(`/profile/${profileId}`);
+  const saveToRecentSearches = (profile: Profile) => {
+    const updated = [
+      profile,
+      ...recentSearches.filter((p) => p._id !== profile._id)
+    ].slice(0, 5); // Keep last 5 searches
+    
+    setRecentSearches(updated);
+    localStorage.setItem("recent_searches", JSON.stringify(updated));
   };
 
-  const getTierColor = (tier: Tier) => {
+  const handleProfileClick = (profile: Profile) => {
+    if (!isRealProfile(profile._id)) return;
+    
+    saveToRecentSearches(profile);
+    setShowSuggestions(false);
+    setSearchQuery("");
+    router.push(`/profile/${profile._id}`);
+  };
+
+  const clearSearch = () => {
+    setSearchQuery("");
+    setSuggestions([]);
+    setShowSuggestions(false);
+    searchInputRef.current?.focus();
+  };
+
+  const clearRecentSearches = () => {
+    setRecentSearches([]);
+    localStorage.removeItem("recent_searches");
+  };
+
+  const getTierBorderColor = (tier: Tier) => {
     switch (tier) {
       case "gold":
-        return "bg-gradient-to-br from-yellow-400 via-yellow-500 to-amber-500";
+        return "ring-yellow-400";
       case "silver":
-        return "bg-gradient-to-br from-gray-300 via-gray-400 to-gray-500";
+        return "ring-gray-400";
       case "bronze":
-        return "bg-gradient-to-br from-orange-400 via-amber-600 to-orange-700";
+        return "ring-orange-500";
       default:
-        return "bg-gray-400";
-    }
-  };
-
-  const getTierBadgeColor = (tier: Tier) => {
-    switch (tier) {
-      case "gold":
-        return "text-yellow-600";
-      case "silver":
-        return "text-gray-500";
-      case "bronze":
-        return "text-orange-600";
-      default:
-        return "text-gray-400";
+        return "ring-gray-300";
     }
   };
 
   return (
     <div className="min-h-screen bg-gray-50 pb-20">
-      {/* Header */}
-      <div className="bg-white shadow-sm sticky top-0 z-10">
-        <div className="max-w-7xl mx-auto px-4 py-4">
-          <h1 className="text-xl font-bold text-gray-800 mb-3">
-            🔍 Search Profiles
-          </h1>
+      {/* Header with Search */}
+      <div className="bg-white shadow-sm sticky top-0 z-20">
+        <div className="max-w-7xl mx-auto px-4 py-3">
+          <div className="flex items-center gap-3">
+            {/* Back Button */}
+            <button
+              onClick={() => router.back()}
+              className="p-2 hover:bg-gray-100 rounded-full transition-colors"
+            >
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
+                <path d="M15 18L9 12L15 6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+              </svg>
+            </button>
 
-          {/* Search Bar */}
-          <div className="relative">
-            <div className="flex items-center gap-2 px-4 py-3 bg-gray-50 rounded-full border border-gray-200">
-              <FiSearch className="text-gray-400" size={20} />
-              <input
-                type="text"
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder="Search by name..."
-                className="flex-1 outline-none text-sm text-gray-800 placeholder-gray-400 bg-transparent"
-                autoFocus
-              />
+            {/* Search Bar */}
+            <div className="flex-1 relative">
+              <div className="flex items-center gap-2 px-4 py-2.5 bg-gray-100 rounded-lg">
+                <FiSearch className="text-gray-400" size={20} />
+                <input
+                  ref={searchInputRef}
+                  type="text"
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  onFocus={() => {
+                    if (searchQuery.trim() || recentSearches.length > 0) {
+                      setShowSuggestions(true);
+                    }
+                  }}
+                  placeholder="Search"
+                  className="flex-1 outline-none text-sm text-gray-800 placeholder-gray-500 bg-transparent"
+                  autoFocus
+                />
+                {searchQuery && (
+                  <button
+                    onClick={clearSearch}
+                    className="p-1 hover:bg-gray-200 rounded-full transition-colors"
+                  >
+                    <FiX className="text-gray-500" size={16} />
+                  </button>
+                )}
+                {loading && (
+                  <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-pink-500"></div>
+                )}
+              </div>
             </div>
           </div>
         </div>
       </div>
 
-      {/* Content */}
-      <div className="max-w-7xl mx-auto px-4 py-4">
-        {/* Initial State - No Search */}
-        {!searchQuery && (
-          <div className="text-center py-16">
-            <div className="text-6xl mb-4">🔍</div>
-            <h3 className="text-lg font-semibold text-gray-700 mb-2">
-              Search for Profiles
-            </h3>
-            <p className="text-gray-500 text-sm">
-              Type a name to find people
-            </p>
-          </div>
-        )}
-
-        {/* Loading State */}
-        {loading && searchQuery && (
-          <div className="text-center py-12">
-            <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-pink-500 mx-auto"></div>
-            <p className="mt-3 text-gray-500 text-sm">Searching...</p>
-          </div>
-        )}
-
-        {/* Results Count */}
-        {searchQuery && !loading && (
-          <p className="text-xs text-gray-500 mb-3">
-            Found {filteredProfiles.length} profile{filteredProfiles.length !== 1 ? "s" : ""} matching "{searchQuery}"
-          </p>
-        )}
-
-        {/* No Results */}
-        {searchQuery && !loading && filteredProfiles.length === 0 && (
-          <div className="text-center py-12">
-            <div className="text-6xl mb-4">😕</div>
-            <h3 className="text-lg font-semibold text-gray-700 mb-2">
-              No profiles found
-            </h3>
-            <p className="text-gray-500 text-sm">
-              No profiles match "{searchQuery}"
-            </p>
-          </div>
-        )}
-
-        {/* Search Results */}
-        {searchQuery && !loading && filteredProfiles.length > 0 && (
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            {filteredProfiles.map((profile) => (
-              <div
-                key={profile._id}
-                onClick={() => handleProfileClick(profile._id)}
-                className="bg-white rounded-2xl shadow-sm overflow-hidden cursor-pointer hover:shadow-lg transition-all"
-              >
-                {/* Profile Image */}
-                <div className="relative h-56 bg-gray-200">
-                  {profile.imageUrl ? (
-                    <img
-                      src={profile.imageUrl}
-                      alt={profile.name}
-                      className="w-full h-full object-cover"
-                    />
-                  ) : (
-                    <div className="w-full h-full flex items-center justify-center text-6xl">
-                      {profile.gender === "male" ? "👨" : "👩"}
-                    </div>
-                  )}
-
-                  {/* Tier Badge */}
+      {/* Suggestions Dropdown */}
+      {showSuggestions && (searchQuery.trim() || recentSearches.length > 0) && (
+        <div className="bg-white border-b shadow-lg">
+          <div className="max-w-7xl mx-auto">
+            {/* Search Results */}
+            {searchQuery.trim() && suggestions.length > 0 && (
+              <div>
+                {suggestions.map((profile) => (
                   <div
-                    className={`absolute top-3 right-3 ${getTierColor(profile.tier)} text-white px-3 py-1 rounded-full text-xs font-bold uppercase shadow-lg`}
+                    key={profile._id}
+                    onClick={() => handleProfileClick(profile)}
+                    className="flex items-center gap-3 px-4 py-3 hover:bg-gray-50 cursor-pointer transition-colors"
                   >
-                    {profile.tier}
+                    {/* Profile Picture with Tier Ring */}
+                    <div className={`relative w-11 h-11 rounded-full ring-2 ${getTierBorderColor(profile.tier)} flex-shrink-0`}>
+                      {profile.imageUrl ? (
+                        <img
+                          src={profile.imageUrl}
+                          alt={profile.name}
+                          className="w-full h-full rounded-full object-cover"
+                        />
+                      ) : (
+                        <div className="w-full h-full rounded-full bg-gray-200 flex items-center justify-center text-xl">
+                          {profile.gender === "male" ? "👨" : "👩"}
+                        </div>
+                      )}
+                      
+                      {/* Tier Badge */}
+                      <div className="absolute -bottom-0.5 -right-0.5 w-4 h-4 bg-white rounded-full flex items-center justify-center">
+                        <div className={`w-3 h-3 rounded-full ${
+                          profile.tier === "gold" ? "bg-yellow-400" :
+                          profile.tier === "silver" ? "bg-gray-400" :
+                          "bg-orange-500"
+                        }`} />
+                      </div>
+                    </div>
+
+                    {/* Profile Info */}
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-semibold text-gray-900 truncate">
+                        {profile.name}
+                      </p>
+                      <p className="text-xs text-gray-500 truncate">
+                        {profile.bio || `${profile.age ? `${profile.age} • ` : ""}${profile.country || profile.tier}`}
+                      </p>
+                    </div>
+
+                    {/* Search Icon */}
+                    <FiSearch className="text-gray-400" size={16} />
                   </div>
-                </div>
+                ))}
+              </div>
+            )}
 
-                {/* Profile Info */}
-                <div className="p-4">
-                  <div className="flex items-center justify-between mb-2">
-                    <h3 className="text-lg font-bold text-gray-800 truncate">
-                      {profile.name}
-                    </h3>
-                    {profile.age && (
-                      <span className="text-gray-600 text-sm">{profile.age}</span>
-                    )}
-                  </div>
+            {/* No Results */}
+            {searchQuery.trim() && !loading && suggestions.length === 0 && (
+              <div className="px-4 py-8 text-center">
+                <p className="text-sm text-gray-500">No results found</p>
+              </div>
+            )}
 
-                  {profile.country && (
-                    <p className="text-xs text-gray-500 mb-2 capitalize">
-                      📍 {profile.country}
-                    </p>
-                  )}
-
-                  {profile.bio && (
-                    <p className="text-sm text-gray-600 mb-3 line-clamp-2">
-                      {profile.bio}
-                    </p>
-                  )}
-
+            {/* Recent Searches */}
+            {!searchQuery.trim() && recentSearches.length > 0 && (
+              <div>
+                <div className="flex items-center justify-between px-4 py-3 border-b">
+                  <p className="text-sm font-semibold text-gray-900">Recent</p>
                   <button
-                    onClick={(e) => handleConnect(e, profile._id)}
-                    disabled={
-                      !isRealProfile(profile._id) ||
-                      requestedProfiles.has(profile._id)
-                    }
-                    className={`w-full text-white text-sm py-2.5 rounded-full font-medium transition-all
-                      ${!isRealProfile(profile._id)
-                        ? "bg-gray-300 cursor-not-allowed"
-                        : requestedProfiles.has(profile._id)
-                          ? "bg-green-500"
-                          : "bg-pink-500 hover:bg-pink-600"
-                      }`}
+                    onClick={clearRecentSearches}
+                    className="text-xs text-blue-500 font-medium hover:text-blue-600"
                   >
-                    {!isRealProfile(profile._id)
-                      ? "Unavailable"
-                      : requestedProfiles.has(profile._id)
-                        ? "✓ Request Sent"
-                        : "Connect"}
+                    Clear all
                   </button>
                 </div>
+                {recentSearches.map((profile) => (
+                  <div
+                    key={profile._id}
+                    onClick={() => handleProfileClick(profile)}
+                    className="flex items-center gap-3 px-4 py-3 hover:bg-gray-50 cursor-pointer transition-colors"
+                  >
+                    <div className={`relative w-11 h-11 rounded-full ring-2 ${getTierBorderColor(profile.tier)} flex-shrink-0`}>
+                      {profile.imageUrl ? (
+                        <img
+                          src={profile.imageUrl}
+                          alt={profile.name}
+                          className="w-full h-full rounded-full object-cover"
+                        />
+                      ) : (
+                        <div className="w-full h-full rounded-full bg-gray-200 flex items-center justify-center text-xl">
+                          {profile.gender === "male" ? "👨" : "👩"}
+                        </div>
+                      )}
+                    </div>
+
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-semibold text-gray-900 truncate">
+                        {profile.name}
+                      </p>
+                      <p className="text-xs text-gray-500 truncate">
+                        {profile.bio || `${profile.age ? `${profile.age} • ` : ""}${profile.country || profile.tier}`}
+                      </p>
+                    </div>
+
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setRecentSearches(prev => prev.filter(p => p._id !== profile._id));
+                        const updated = recentSearches.filter(p => p._id !== profile._id);
+                        localStorage.setItem("recent_searches", JSON.stringify(updated));
+                      }}
+                      className="p-2 hover:bg-gray-100 rounded-full transition-colors"
+                    >
+                      <FiX className="text-gray-400" size={16} />
+                    </button>
+                  </div>
+                ))}
               </div>
-            ))}
+            )}
           </div>
-        )}
-      </div>
+        </div>
+      )}
+
+      {/* Empty State */}
+      {!showSuggestions && !searchQuery && (
+        <div className="max-w-7xl mx-auto px-4 py-16 text-center">
+          <div className="text-6xl mb-4">🔍</div>
+          <h3 className="text-lg font-semibold text-gray-700 mb-2">
+            Search
+          </h3>
+          <p className="text-gray-500 text-sm">
+            Search for people by name
+          </p>
+        </div>
+      )}
 
       <BottomNav />
     </div>

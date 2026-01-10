@@ -4,7 +4,6 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import BottomNav from "./components/BottomNav";
-import SearchBar from "./components/SearchBar";
 import { FiChevronDown, FiChevronRight, FiChevronLeft } from "react-icons/fi";
 import DebugPanel from "./components/DebugPanel";
 
@@ -35,14 +34,17 @@ type Profile = {
 
 const PROFILES_PER_PAGE = 4;
 
+// Helper to check if profile is real (MongoDB ObjectId = 24 hex chars)
 const isRealProfile = (profileId: any) => {
   if (!profileId) return false;
   return String(profileId).length === 24;
 };
 
+/* -------- COUNTRY RULES (SWITCHED) -------- */
 const MEN_COUNTRIES: Country[] = ["usa", "brazil", "colombia", "venezuela", "argentina"];
 const WOMEN_COUNTRIES: Country[] = ["korea", "japan", "brazil", "france", "spain"];
 
+/* -------- DEFAULT PROFILES (PER TIER) -------- */
 const defaultProfiles: Record<Tier, Profile[]> = {
   bronze: [
     { _id: "b1", name: "Sophia", tier: "bronze", gender: "female", country: "korea" },
@@ -100,6 +102,7 @@ const defaultProfiles: Record<Tier, Profile[]> = {
   ],
 };
 
+/* -------- PLANS -------- */
 const plans: Record<Tier, Plan[]> = {
   bronze: [
     { duration: "30 mins", price: 199 },
@@ -115,6 +118,7 @@ const plans: Record<Tier, Plan[]> = {
   ],
 };
 
+/* -------- TIER COLORS -------- */
 const tierColors = {
   bronze: {
     active: "bg-gradient-to-br from-orange-400 via-amber-600 to-orange-700",
@@ -142,7 +146,6 @@ export default function HomePage() {
   const [loading, setLoading] = useState(true);
   const [currentPage, setCurrentPage] = useState(0);
   const [requestedProfiles, setRequestedProfiles] = useState<Set<string>>(new Set());
-  const [searchQuery, setSearchQuery] = useState("");
 
   const oppositeGender: Gender = viewerGender;
   const allowedCountries =
@@ -170,41 +173,30 @@ export default function HomePage() {
     setSelectedPlan(plans[selectedTier][0]);
     setSelectedCountry("all");
     setCurrentPage(0);
-    setSearchQuery(""); // Reset search when changing tier
   }, [selectedTier, viewerGender]);
 
   /* -------- FILTER REAL PROFILES -------- */
   const filtered = profiles.filter((p) => {
+    // Basic tier and gender match
     if (p.tier !== selectedTier || p.gender !== viewerGender) return false;
+
+    // If profile has country, check if it's allowed, otherwise include it
     if (p.country && !allowedCountries.includes(p.country as Country)) return false;
+
+    // Country filter
     if (selectedCountry !== "all" && p.country !== selectedCountry) return false;
-    
-    // Search filter
-    if (searchQuery.trim()) {
-      const query = searchQuery.toLowerCase();
-      if (!p.name.toLowerCase().includes(query)) return false;
-    }
-    
+
     return true;
   });
 
   /* -------- GET ALL AVAILABLE PROFILES (REAL + DEFAULTS) -------- */
   const allAvailableProfiles = (() => {
     const defaults = defaultProfiles[selectedTier].filter(
-      (dp) => {
-        if (dp.gender !== viewerGender) return false;
-        if (!allowedCountries.includes(dp.country as Country)) return false;
-        if (selectedCountry !== "all" && dp.country !== selectedCountry) return false;
-        if (filtered.some((rp) => rp._id === dp._id)) return false;
-        
-        // Search filter for dummy profiles
-        if (searchQuery.trim()) {
-          const query = searchQuery.toLowerCase();
-          if (!dp.name.toLowerCase().includes(query)) return false;
-        }
-        
-        return true;
-      }
+      (dp) =>
+        dp.gender === viewerGender &&
+        allowedCountries.includes(dp.country as Country) &&
+        (selectedCountry === "all" || dp.country === selectedCountry) &&
+        !filtered.some((rp) => rp._id === dp._id)
     );
     return [...filtered, ...defaults];
   })();
@@ -241,6 +233,7 @@ export default function HomePage() {
   const handleConnect = async (e: React.MouseEvent, profileId: string) => {
     e.stopPropagation();
 
+    // Don't allow connect for placeholder profiles
     if (!isRealProfile(profileId)) {
       return;
     }
@@ -253,6 +246,7 @@ export default function HomePage() {
 
     const user = JSON.parse(userStr);
 
+    // Check if user has profileId
     if (!user.profileId) {
       alert("Profile not found. Please complete your profile.");
       return;
@@ -285,6 +279,7 @@ export default function HomePage() {
   const handleChat = (e: React.MouseEvent, profileId: string) => {
     e.stopPropagation();
 
+    // Don't allow chat for placeholder profiles
     if (!isRealProfile(profileId)) {
       return;
     }
@@ -293,6 +288,7 @@ export default function HomePage() {
   };
 
   const handleProfileClick = (profileId: string) => {
+    // Only allow clicking real profiles
     if (!isRealProfile(profileId)) {
       return;
     }
@@ -323,24 +319,6 @@ export default function HomePage() {
 
           {/* TOP SECTION - COMPACT FILTERS */}
           <div className="pt-3 pb-2 space-y-2">
-
-            {/* SEARCH BAR */}
-            <SearchBar
-              value={searchQuery}
-              onChange={(val) => {
-                setSearchQuery(val);
-                setCurrentPage(0); // Reset to first page when searching
-              }}
-              placeholder="Search by name..."
-              className="mb-2"
-            />
-
-            {/* Search Results Count */}
-            {searchQuery && (
-              <p className="text-xs text-center text-gray-500">
-                Found {allAvailableProfiles.length} profile{allAvailableProfiles.length !== 1 ? 's' : ''} matching "{searchQuery}"
-              </p>
-            )}
 
             {/* TIER SELECTOR */}
             <div className="flex justify-center gap-3">
@@ -406,7 +384,6 @@ export default function HomePage() {
                       onClick={() => {
                         setSelectedCountry("all");
                         setShowCountries(false);
-                        setCurrentPage(0);
                       }}
                       className={`w-full px-3 py-1.5 text-left text-xs hover:bg-pink-50 ${selectedCountry === "all" ? "bg-pink-50 text-pink-600 font-medium" : ""
                         }`}
@@ -419,7 +396,6 @@ export default function HomePage() {
                         onClick={() => {
                           setSelectedCountry(c);
                           setShowCountries(false);
-                          setCurrentPage(0);
                         }}
                         className={`w-full px-3 py-1.5 text-left text-xs hover:bg-pink-50 capitalize ${selectedCountry === c ? "bg-pink-50 text-pink-600 font-medium" : ""
                           }`}

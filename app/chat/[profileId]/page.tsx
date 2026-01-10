@@ -1,4 +1,4 @@
-// app/chat/[profileId]/page.tsx - Updated with In-Chat Search
+// app/chat/[profileId]/page.tsx - Updated with Block/Report
 "use client";
 
 import { useEffect, useState, useRef, useCallback } from "react";
@@ -7,6 +7,7 @@ import { FiArrowLeft, FiSend, FiCheck, FiSearch } from "react-icons/fi";
 import { io, Socket } from "socket.io-client";
 import TypingIndicator from "@/app/components/TypingIndicator";
 import ChatSearch from "@/app/components/ChatSearch";
+import BlockReportMenu from "@/app/components/BlockReportMenu";
 
 type Message = {
   _id: string;
@@ -36,6 +37,8 @@ export default function ChatPage() {
   const [myName, setMyName] = useState<string>("");
   const [isOtherTyping, setIsOtherTyping] = useState(false);
   const [isSearchOpen, setIsSearchOpen] = useState(false);
+  const [isBlocked, setIsBlocked] = useState(false);
+  const [isBlockedBy, setIsBlockedBy] = useState(false);
 
   const socketRef = useRef<Socket | null>(null);
   const bottomRef = useRef<HTMLDivElement | null>(null);
@@ -55,7 +58,7 @@ export default function ChatPage() {
     }
 
     const user = JSON.parse(userStr);
-    
+   
     if (!user.profileId) {
       alert("Profile not found. Please create a profile first.");
       router.replace("/profile/create");
@@ -66,9 +69,24 @@ export default function ChatPage() {
     setMyName(user.name || "User");
   }, [router]);
 
+  /* -------- CHECK BLOCK STATUS -------- */
+  useEffect(() => {
+    if (!myProfileId) return;
+
+    fetch(`/api/block/check?myProfileId=${myProfileId}&otherProfileId=${otherProfileId}`)
+      .then((res) => res.json())
+      .then((data) => {
+        if (data.success) {
+          setIsBlocked(data.isBlocked);
+          setIsBlockedBy(data.isBlockedBy);
+        }
+      })
+      .catch((err) => console.error("Check block error:", err));
+  }, [myProfileId, otherProfileId]);
+
   /* -------- TYPING HANDLERS -------- */
   const startTyping = useCallback(() => {
-    if (!socketRef.current || !roomIdRef.current || isTypingRef.current) return;
+    if (!socketRef.current || !roomIdRef.current || isTypingRef.current || isBlockedBy) return;
 
     console.log("⌨️ Emitting typing-start");
     socketRef.current.emit("typing-start", {
@@ -77,7 +95,7 @@ export default function ChatPage() {
       name: myName,
     });
     isTypingRef.current = true;
-  }, [myProfileId, myName]);
+  }, [myProfileId, myName, isBlockedBy]);
 
   const stopTyping = useCallback(() => {
     if (!socketRef.current || !roomIdRef.current || !isTypingRef.current) return;
@@ -91,6 +109,8 @@ export default function ChatPage() {
   }, [myProfileId]);
 
   const handleTyping = useCallback(() => {
+    if (isBlockedBy) return;
+    
     startTyping();
 
     if (typingTimeoutRef.current) {
@@ -100,7 +120,7 @@ export default function ChatPage() {
     typingTimeoutRef.current = setTimeout(() => {
       stopTyping();
     }, 2000);
-  }, [startTyping, stopTyping]);
+  }, [startTyping, stopTyping, isBlockedBy]);
 
   /* -------- SOCKET SETUP -------- */
   useEffect(() => {
@@ -123,6 +143,12 @@ export default function ChatPage() {
       socket.off("receive-message").on("receive-message", (data: any) => {
         console.log("📩 Socket received message:", data);
 
+        // Don't show messages if blocked
+        if (isBlocked || isBlockedBy) {
+          console.log("🚫 Message blocked");
+          return;
+        }
+
         setIsOtherTyping(false);
         if (otherTypingTimeoutRef.current) {
           clearTimeout(otherTypingTimeoutRef.current);
@@ -130,7 +156,7 @@ export default function ChatPage() {
 
         setMessages((prev) => {
           if (prev.some((m) => m._id === data._id)) return prev;
-          
+         
           const newMsg = {
             _id: data._id,
             text: data.text,
@@ -152,8 +178,8 @@ export default function ChatPage() {
 
       socket.off("user-typing").on("user-typing", (data: any) => {
         console.log("⌨️ User typing event:", data);
-        
-        if (data.profileId !== myProfileId) {
+       
+        if (data.profileId !== myProfileId && !isBlocked && !isBlockedBy) {
           setIsOtherTyping(data.isTyping);
 
           if (data.isTyping) {
@@ -173,7 +199,7 @@ export default function ChatPage() {
 
       socket.off("message-status-update").on("message-status-update", (data: any) => {
         console.log("📬 Message status update:", data);
-        
+       
         setMessages((prev) =>
           prev.map((m) =>
             m._id === data.messageId
@@ -185,7 +211,7 @@ export default function ChatPage() {
 
       socket.off("messages-status-update").on("messages-status-update", (data: any) => {
         console.log("👁️ Messages status update:", data);
-        
+       
         setMessages((prev) =>
           prev.map((m) =>
             data.messageIds.includes(m._id)
@@ -209,7 +235,7 @@ export default function ChatPage() {
       socketRef.current?.disconnect();
       socketRef.current = null;
     };
-  }, [myProfileId, otherProfileId, stopTyping]);
+  }, [myProfileId, otherProfileId, stopTyping, isBlocked, isBlockedBy]);
 
   /* -------- FETCH PROFILE -------- */
   useEffect(() => {
@@ -232,15 +258,22 @@ export default function ChatPage() {
       .then((data) => {
         console.log("✅ Messages fetched:", data);
         if (data.success) {
-          setMessages(data.messages);
-          markMessagesAsRead(data.messages);
+          // Hide messages if blocked
+          if (isBlocked) {
+            setMessages([]);
+          } else {
+            setMessages(data.messages);
+            markMessagesAsRead(data.messages);
+          }
         }
       })
       .catch((err) => console.error("Fetch messages error:", err));
-  }, [myProfileId, otherProfileId]);
+  }, [myProfileId, otherProfileId, isBlocked]);
 
   /* -------- MARK MESSAGES AS READ -------- */
   const markMessagesAsRead = async (msgs: Message[]) => {
+    if (isBlockedBy) return;
+
     const unreadIds = msgs
       .filter(
         (m) =>
@@ -304,9 +337,26 @@ export default function ChatPage() {
     }
   }, []);
 
+  /* -------- BLOCK STATUS CHANGE -------- */
+  const handleBlockStatusChange = (blocked: boolean) => {
+    setIsBlocked(blocked);
+    if (blocked) {
+      setMessages([]);
+    } else {
+      // Reload messages
+      fetch(`/api/chat?myProfileId=${myProfileId}&otherProfileId=${otherProfileId}`)
+        .then((res) => res.json())
+        .then((data) => {
+          if (data.success) {
+            setMessages(data.messages);
+          }
+        });
+    }
+  };
+
   /* -------- SEND MESSAGE -------- */
   const handleSend = async () => {
-    if (!newMessage.trim() || !myProfileId) return;
+    if (!newMessage.trim() || !myProfileId || isBlockedBy) return;
 
     const text = newMessage.trim();
     setNewMessage("");
@@ -427,13 +477,24 @@ export default function ChatPage() {
           </div>
         </div>
 
-        {/* Search Button */}
-        <button
-          onClick={() => setIsSearchOpen(!isSearchOpen)}
-          className="p-2 hover:bg-gray-100 rounded-full transition-colors flex-shrink-0"
-        >
-          <FiSearch size={20} className={isSearchOpen ? "text-pink-500" : "text-gray-600"} />
-        </button>
+        <div className="flex items-center gap-2 flex-shrink-0">
+          {/* Search Button */}
+          <button
+            onClick={() => setIsSearchOpen(!isSearchOpen)}
+            className="p-2 hover:bg-gray-100 rounded-full transition-colors"
+          >
+            <FiSearch size={20} className={isSearchOpen ? "text-pink-500" : "text-gray-600"} />
+          </button>
+
+          {/* Block/Report Menu */}
+          <BlockReportMenu
+            myProfileId={myProfileId}
+            otherProfileId={otherProfileId}
+            otherProfileName={profile?.name || "User"}
+            isBlocked={isBlocked}
+            onBlockStatusChange={handleBlockStatusChange}
+          />
+        </div>
       </div>
 
       {/* SEARCH BAR */}
@@ -445,48 +506,65 @@ export default function ChatPage() {
         />
       )}
 
+      {/* BLOCKED MESSAGE */}
+      {isBlocked && (
+        <div className="bg-yellow-50 border-b border-yellow-200 px-4 py-2 text-center text-sm text-yellow-800">
+          You have blocked this user. Unblock to send messages.
+        </div>
+      )}
+
+      {isBlockedBy && (
+        <div className="bg-red-50 border-b border-red-200 px-4 py-2 text-center text-sm text-red-800">
+          You cannot send messages to this user.
+        </div>
+      )}
+
       {/* MESSAGES */}
       <div className="flex-1 overflow-y-auto px-4 py-3 space-y-3">
-        {messages.length === 0 && (
+        {isBlocked ? (
+          <div className="text-center text-gray-400 text-sm mt-10">
+            Chat history hidden. Unblock to view messages.
+          </div>
+        ) : messages.length === 0 ? (
           <div className="text-center text-gray-400 text-sm mt-10">
             No messages yet. Start the conversation! 👋
           </div>
-        )}
-        
-        {messages.map((msg) => {
-          const isMine = msg.senderProfileId === myProfileId;
-          
-          return (
-            <div
-              key={msg._id}
-              ref={(el) => {
-                if (el) messageRefs.current[msg._id] = el;
-              }}
-              className={`flex ${isMine ? "justify-end" : "justify-start"} transition-colors duration-500`}
-            >
+        ) : (
+          messages.map((msg) => {
+            const isMine = msg.senderProfileId === myProfileId;
+           
+            return (
               <div
-                className={`px-4 py-2 rounded-2xl text-sm max-w-[70%] ${
-                  isMine
-                    ? "bg-pink-500 text-white rounded-br-none"
-                    : "bg-white shadow rounded-bl-none"
-                }`}
+                key={msg._id}
+                ref={(el) => {
+                  if (el) messageRefs.current[msg._id] = el;
+                }}
+                className={`flex ${isMine ? "justify-end" : "justify-start"} transition-colors duration-500`}
               >
-                <div className="flex items-end gap-1">
-                  <span>{msg.text}</span>
-                  {isMine && <MessageTicks message={msg} />}
+                <div
+                  className={`px-4 py-2 rounded-2xl text-sm max-w-[70%] ${
+                    isMine
+                      ? "bg-pink-500 text-white rounded-br-none"
+                      : "bg-white shadow rounded-bl-none"
+                  }`}
+                >
+                  <div className="flex items-end gap-1">
+                    <span>{msg.text}</span>
+                    {isMine && <MessageTicks message={msg} />}
+                  </div>
                 </div>
               </div>
-            </div>
-          );
-        })}
+            );
+          })
+        )}
 
         {/* TYPING INDICATOR */}
-        {isOtherTyping && (
+        {isOtherTyping && !isBlocked && (
           <div className="flex justify-start">
             <TypingIndicator />
           </div>
         )}
-        
+       
         <div ref={bottomRef} />
       </div>
 
@@ -505,14 +583,15 @@ export default function ChatPage() {
               handleSend();
             }
           }}
-          placeholder="Type a message…"
-          className="flex-1 px-4 py-2 border rounded-full text-sm focus:outline-none focus:ring-2 focus:ring-pink-500"
+          placeholder={isBlockedBy ? "You cannot send messages" : "Type a message…"}
+          disabled={isBlockedBy}
+          className="flex-1 px-4 py-2 border rounded-full text-sm focus:outline-none focus:ring-2 focus:ring-pink-500 disabled:bg-gray-100 disabled:cursor-not-allowed"
         />
 
         <button
           type="button"
           onClick={handleSend}
-          disabled={!newMessage.trim()}
+          disabled={!newMessage.trim() || isBlockedBy}
           className="bg-pink-500 text-white p-2 rounded-full disabled:bg-gray-300 transition-colors"
         >
           <FiSend />
