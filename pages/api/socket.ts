@@ -1,4 +1,4 @@
-// pages/api/socket.ts - Updated with edit/delete events
+// pages/api/socket.ts - Updated with View-Once Events
 import { Server as NetServer } from "http";
 import { NextApiRequest } from "next";
 import { Server as ServerIO } from "socket.io";
@@ -72,6 +72,16 @@ export default async function handler(
         });
       });
 
+      /* -------- VIEW-ONCE VIEWED -------- */
+      socket.on("view-once-viewed", (data: any) => {
+        console.log("👁️ Broadcasting view-once viewed to room:", data.roomId);
+        socket.to(data.roomId).emit("view-once-viewed", {
+          messageId: data.messageId,
+          viewedBy: data.viewedBy,
+          viewedAt: data.viewedAt,
+        });
+      });
+
       /* -------- TYPING INDICATORS -------- */
       socket.on("typing-start", (data: any) => {
         console.log("⌨️ User typing start:", data);
@@ -106,9 +116,6 @@ export default async function handler(
           read: true,
         });
       });
-
-      /* -------- CONNECTION REQUEST (from API) -------- */
-      // This is now emitted from API route via global.io
 
       /* -------- DISCONNECT -------- */
       socket.on("disconnect", () => {

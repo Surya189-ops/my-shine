@@ -1,14 +1,16 @@
-// app/chat/[profileId]/page.tsx - With Edit/Delete (No Block/Report)
+// app/chat/[profileId]/page.tsx - Updated with Image Support
 "use client";
 
 import { useEffect, useState, useRef, useCallback } from "react";
 import { useParams, useRouter } from "next/navigation";
-import { FiArrowLeft, FiSend, FiCheck, FiSearch } from "react-icons/fi";
+import { FiArrowLeft, FiSend, FiCheck, FiSearch, FiImage, FiEye } from "react-icons/fi";
 import { io, Socket } from "socket.io-client";
 import TypingIndicator from "@/app/components/TypingIndicator";
 import ChatSearch from "@/app/components/ChatSearch";
 import MessageContextMenu from "@/app/components/MessageContextMenu";
 import EditMessageModal from "@/app/components/EditMessageModal";
+import ImagePicker from "@/app/components/ImagePicker";
+import ImageViewer from "@/app/components/ImageViewer";
 
 type Message = {
   _id: string;
@@ -23,6 +25,12 @@ type Message = {
   isDeleted?: boolean;
   deletedBy?: string | null;
   deletedForEveryone?: boolean;
+  imageUrl?: string | null;
+  imageWidth?: number | null;
+  imageHeight?: number | null;
+  isViewOnce?: boolean;
+  viewedBy?: string[];
+  viewedAt?: string | null;
 };
 
 type Profile = {
@@ -53,6 +61,14 @@ export default function ChatPage() {
   const [isSearchOpen, setIsSearchOpen] = useState(false);
   const [contextMenu, setContextMenu] = useState<ContextMenuState>(null);
   const [editingMessage, setEditingMessage] = useState<{ id: string; text: string } | null>(null);
+  const [showImagePicker, setShowImagePicker] = useState(false);
+  const [viewingImage, setViewingImage] = useState<{
+    url: string;
+    caption?: string;
+    isViewOnce?: boolean;
+    messageId?: string;
+    isSender?: boolean;
+  } | null>(null);
 
   const socketRef = useRef<Socket | null>(null);
   const bottomRef = useRef<HTMLDivElement | null>(null);
@@ -72,7 +88,7 @@ export default function ChatPage() {
     }
 
     const user = JSON.parse(userStr);
-   
+
     if (!user.profileId) {
       alert("Profile not found. Please create a profile first.");
       router.replace("/profile/create");
@@ -87,7 +103,6 @@ export default function ChatPage() {
   const startTyping = useCallback(() => {
     if (!socketRef.current || !roomIdRef.current || isTypingRef.current) return;
 
-    console.log("⌨️ Emitting typing-start");
     socketRef.current.emit("typing-start", {
       roomId: roomIdRef.current,
       profileId: myProfileId,
@@ -99,7 +114,6 @@ export default function ChatPage() {
   const stopTyping = useCallback(() => {
     if (!socketRef.current || !roomIdRef.current || !isTypingRef.current) return;
 
-    console.log("⏹️ Emitting typing-stop");
     socketRef.current.emit("typing-stop", {
       roomId: roomIdRef.current,
       profileId: myProfileId,
@@ -147,10 +161,10 @@ export default function ChatPage() {
 
         setMessages((prev) => {
           if (prev.some((m) => m._id === data._id)) return prev;
-         
-          const newMsg = {
+
+          const newMsg: Message = {
             _id: data._id,
-            text: data.text,
+            text: data.text || "",
             senderProfileId: data.senderProfileId,
             receiverProfileId: data.receiverProfileId,
             delivered: true,
@@ -161,6 +175,11 @@ export default function ChatPage() {
             isDeleted: data.isDeleted || false,
             deletedBy: data.deletedBy || null,
             deletedForEveryone: data.deletedForEveryone || false,
+            imageUrl: data.imageUrl || null,
+            imageWidth: data.imageWidth || null,
+            imageHeight: data.imageHeight || null,
+            isViewOnce: data.isViewOnce || false,
+            viewedBy: data.viewedBy || [],
           };
 
           socket.emit("message-delivered", {
@@ -175,16 +194,16 @@ export default function ChatPage() {
       // Listen for message edits
       socket.off("message-edited").on("message-edited", (data: any) => {
         console.log("✏️ Message edited:", data);
-        
+
         setMessages((prev) =>
           prev.map((m) =>
             m._id === data.messageId
               ? {
-                  ...m,
-                  text: data.newText,
-                  isEdited: true,
-                  editedAt: data.editedAt,
-                }
+                ...m,
+                text: data.newText,
+                isEdited: true,
+                editedAt: data.editedAt,
+              }
               : m
           )
         );
@@ -193,26 +212,40 @@ export default function ChatPage() {
       // Listen for message deletes
       socket.off("message-deleted").on("message-deleted", (data: any) => {
         console.log("🗑️ Message deleted:", data);
-        
+
         if (data.deletedForEveryone) {
           setMessages((prev) =>
             prev.map((m) =>
               m._id === data.messageId
                 ? {
-                    ...m,
-                    isDeleted: true,
-                    deletedForEveryone: true,
-                    // Keep text in state but UI shows deletion message
-                  }
+                  ...m,
+                  isDeleted: true,
+                  deletedForEveryone: true,
+                }
                 : m
             )
           );
         }
       });
 
+      // Listen for view-once viewed
+      socket.off("view-once-viewed").on("view-once-viewed", (data: any) => {
+        console.log("👁️ View-once image viewed:", data);
+
+        setMessages((prev) =>
+          prev.map((m) =>
+            m._id === data.messageId
+              ? {
+                ...m,
+                viewedBy: [...(m.viewedBy || []), data.viewedBy],
+                viewedAt: data.viewedAt,
+              }
+              : m
+          )
+        );
+      });
+
       socket.off("user-typing").on("user-typing", (data: any) => {
-        console.log("⌨️ User typing event:", data);
-       
         if (data.profileId !== myProfileId) {
           setIsOtherTyping(data.isTyping);
 
@@ -232,8 +265,6 @@ export default function ChatPage() {
       });
 
       socket.off("message-status-update").on("message-status-update", (data: any) => {
-        console.log("📬 Message status update:", data);
-       
         setMessages((prev) =>
           prev.map((m) =>
             m._id === data.messageId
@@ -244,8 +275,6 @@ export default function ChatPage() {
       });
 
       socket.off("messages-status-update").on("messages-status-update", (data: any) => {
-        console.log("👁️ Messages status update:", data);
-       
         setMessages((prev) =>
           prev.map((m) =>
             data.messageIds.includes(m._id)
@@ -285,12 +314,9 @@ export default function ChatPage() {
   useEffect(() => {
     if (!myProfileId) return;
 
-    console.log("📥 Fetching messages:", { myProfileId, otherProfileId });
-
     fetch(`/api/chat?myProfileId=${myProfileId}&otherProfileId=${otherProfileId}`)
       .then((res) => res.json())
       .then((data) => {
-        console.log("✅ Messages fetched:", data);
         if (data.success) {
           setMessages(data.messages);
           markMessagesAsRead(data.messages);
@@ -371,9 +397,9 @@ export default function ChatPage() {
     message: Message
   ) => {
     e.preventDefault();
-    
-    // Don't show menu for deleted messages
-    if (message.isDeleted) return;
+
+    // Don't show menu for deleted messages or view-once images
+    if (message.isDeleted || message.isViewOnce) return;
 
     const x = "touches" in e ? e.touches[0].clientX : e.clientX;
     const y = "touches" in e ? e.touches[0].clientY : e.clientY;
@@ -403,21 +429,19 @@ export default function ChatPage() {
       const data = await res.json();
 
       if (data.success) {
-        // Update local state
         setMessages((prev) =>
           prev.map((m) =>
             m._id === messageId
               ? {
-                  ...m,
-                  text: newText,
-                  isEdited: true,
-                  editedAt: data.message.editedAt,
-                }
+                ...m,
+                text: newText,
+                isEdited: true,
+                editedAt: data.message.editedAt,
+              }
               : m
           )
         );
 
-        // Emit socket event
         if (socketRef.current && data.socketData) {
           socketRef.current.emit("edit-message", data.socketData);
         }
@@ -449,26 +473,22 @@ export default function ChatPage() {
 
       if (data.success) {
         if (deleteForEveryone) {
-          // Update local state for delete for everyone
           setMessages((prev) =>
             prev.map((m) =>
               m._id === messageId
                 ? {
-                    ...m,
-                    isDeleted: true,
-                    deletedForEveryone: true,
-                    // Keep text in state but UI will show deletion message
-                  }
+                  ...m,
+                  isDeleted: true,
+                  deletedForEveryone: true,
+                }
                 : m
             )
           );
 
-          // Emit socket event
           if (socketRef.current && data.socketData) {
             socketRef.current.emit("delete-message", data.socketData);
           }
         } else {
-          // Delete for me only - remove from local state
           setMessages((prev) => prev.filter((m) => m._id !== messageId));
         }
       } else {
@@ -480,7 +500,127 @@ export default function ChatPage() {
     }
   };
 
-  /* -------- SEND MESSAGE -------- */
+  /* -------- IMAGE HANDLERS -------- */
+  const handleImageSelect = async (imageData: {
+    imageUrl: string;
+    imageWidth: number;
+    imageHeight: number;
+    isViewOnce: boolean;
+    caption?: string;
+  }) => {
+    setShowImagePicker(false);
+
+    try {
+      const res = await fetch("/api/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          senderProfileId: myProfileId,
+          receiverProfileId: otherProfileId,
+          text: imageData.caption || "",
+          imageUrl: imageData.imageUrl,
+          imageWidth: imageData.imageWidth,
+          imageHeight: imageData.imageHeight,
+          isViewOnce: imageData.isViewOnce,
+        }),
+      });
+
+      const data = await res.json();
+
+      if (data.success && socketRef.current) {
+        const newMsg: Message = {
+          _id: data.message._id,
+          text: data.message.text || "",
+          senderProfileId: myProfileId,
+          receiverProfileId: otherProfileId,
+          delivered: false,
+          read: false,
+          createdAt: data.message.createdAt || new Date().toISOString(),
+          isEdited: false,
+          isDeleted: false,
+          imageUrl: data.message.imageUrl,
+          imageWidth: data.message.imageWidth,
+          imageHeight: data.message.imageHeight,
+          isViewOnce: data.message.isViewOnce || false,
+          viewedBy: [],
+        };
+
+        setMessages((prev) => [...prev, newMsg]);
+
+        socketRef.current.emit("send-message", {
+          roomId: roomIdRef.current,
+          ...newMsg,
+        });
+      } else {
+        alert(data.message || "Failed to send image");
+      }
+    } catch (err) {
+      console.error("Send image error:", err);
+      alert("Failed to send image");
+    }
+  };
+
+  const handleImageView = async (message: Message) => {
+    // Check if it's a view-once image that hasn't been viewed
+    const isSender = message.senderProfileId === myProfileId;
+    const isReceiver = message.receiverProfileId === myProfileId;
+    const hasViewed = message.viewedBy?.includes(myProfileId);
+
+    // Only mark as viewed if:
+    // 1. It's a view-once image
+    // 2. Current user is the RECEIVER (not sender)
+    // 3. Receiver hasn't viewed it yet
+    if (message.isViewOnce && isReceiver && !hasViewed) {
+      // Mark as viewed
+      try {
+        const res = await fetch("/api/chat/mark-viewed", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            messageId: message._id,
+            profileId: myProfileId,
+          }),
+        });
+
+        const data = await res.json();
+
+        if (data.success && socketRef.current && data.socketData) {
+          socketRef.current.emit("view-once-viewed", data.socketData);
+        }
+      } catch (err) {
+        console.error("Mark viewed error:", err);
+      }
+    }
+
+    setViewingImage({
+      url: message.imageUrl!,
+      caption: message.text,
+      isViewOnce: message.isViewOnce,
+      messageId: message._id,
+      isSender: isSender, // Track if viewer is sender
+    });
+  };
+
+  const handleCloseImageViewer = () => {
+    const messageId = viewingImage?.messageId;
+    const isViewOnce = viewingImage?.isViewOnce;
+    const isSender = viewingImage?.isSender;
+
+    setViewingImage(null);
+
+    // If it was a view-once image AND current user is RECEIVER (not sender), remove it
+    if (isViewOnce && messageId && !isSender) {
+      setMessages((prev) =>
+        prev.map((m) =>
+          m._id === messageId
+            ? { ...m, imageUrl: null, text: "" }
+            : m
+        )
+      );
+    }
+  };
+
+  /* -------- SEND TEXT MESSAGE -------- */
   const handleSend = async () => {
     if (!newMessage.trim() || !myProfileId) return;
 
@@ -489,12 +629,6 @@ export default function ChatPage() {
     inputRef.current?.focus();
 
     stopTyping();
-
-    console.log("📤 Sending message:", {
-      senderProfileId: myProfileId,
-      receiverProfileId: otherProfileId,
-      text,
-    });
 
     try {
       const res = await fetch("/api/chat", {
@@ -508,8 +642,6 @@ export default function ChatPage() {
       });
 
       const data = await res.json();
-
-      console.log("✅ Message sent response:", data);
 
       if (data.success && socketRef.current) {
         const newMsg: Message = {
@@ -535,11 +667,10 @@ export default function ChatPage() {
           createdAt: newMsg.createdAt,
         });
       } else {
-        console.error("❌ Message send failed:", data);
         alert(data.message || "Failed to send message");
       }
     } catch (err) {
-      console.error("❌ Send message error:", err);
+      console.error("Send message error:", err);
       alert("Failed to send message");
     }
   };
@@ -576,14 +707,13 @@ export default function ChatPage() {
   /* -------- RENDER DELETED MESSAGE -------- */
   const renderDeletedMessage = (message: Message) => {
     const isMine = message.senderProfileId === myProfileId;
-    
+
     return (
       <div
-        className={`px-4 py-2 rounded-2xl text-sm max-w-[70%] ${
-          isMine
+        className={`px-4 py-2 rounded-2xl text-sm max-w-[70%] ${isMine
             ? "bg-pink-100 text-gray-500 rounded-br-none"
             : "bg-gray-100 text-gray-500 shadow rounded-bl-none"
-        }`}
+          }`}
       >
         <div className="flex items-center gap-2 italic">
           <span className="text-xs">🚫</span>
@@ -594,6 +724,109 @@ export default function ChatPage() {
                 : "This message was deleted"
               : "Message deleted"}
           </span>
+        </div>
+      </div>
+    );
+  };
+
+  /* -------- RENDER VIEW-ONCE MESSAGE -------- */
+  const renderViewOnceMessage = (message: Message) => {
+    const isMine = message.senderProfileId === myProfileId;
+    const hasViewed = message.viewedBy?.includes(myProfileId);
+    const hasImage = message.imageUrl && message.imageUrl.length > 0;
+
+    // Only show "expired" for RECEIVER who has viewed it
+    if (!isMine && hasViewed && !hasImage) {
+      return (
+        <div className="px-4 py-3 rounded-2xl text-sm max-w-[70%] bg-gray-100 shadow rounded-bl-none">
+          <div className="flex items-center gap-2 text-gray-500 italic">
+            <FiEye size={16} />
+            <span>Photo expired</span>
+          </div>
+        </div>
+      );
+    }
+
+    // Sender should never see expired message
+    return null;
+  };
+
+  /* -------- RENDER IMAGE MESSAGE -------- */
+  const renderImageMessage = (message: Message) => {
+    const isMine = message.senderProfileId === myProfileId;
+    const hasViewed = message.viewedBy?.includes(myProfileId);
+
+    // View-once image that's been viewed by receiver
+    if (message.isViewOnce && !isMine && hasViewed) {
+      return renderViewOnceMessage(message);
+    }
+
+    // No image URL (shouldn't happen, but safety check)
+    if (!message.imageUrl) {
+      return renderViewOnceMessage(message);
+    }
+
+    // Determine if image should be blurred
+    const shouldBlur = message.isViewOnce && !hasViewed;
+
+    return (
+      <div
+        className={`max-w-[70%] ${isMine ? "ml-auto" : "mr-auto"}`}
+        onClick={() => handleImageView(message)}
+      >
+        <div className={`relative rounded-2xl overflow-hidden cursor-pointer ${isMine ? "rounded-br-none" : "rounded-bl-none"
+          }`}>
+          {/* Blurred Background Layer (for view-once) */}
+          {shouldBlur && (
+            <div className="absolute inset-0 z-0">
+              <img
+                src={message.imageUrl}
+                alt="Blurred background"
+                className="w-full h-full object-cover blur-3xl scale-110"
+              />
+            </div>
+          )}
+
+          {/* Main Image Container */}
+          <div className={`relative ${shouldBlur ? 'z-10' : ''}`}>
+            {/* View Once Badge & Overlay */}
+            {message.isViewOnce && (
+              <div className="absolute inset-0 z-20 flex flex-col items-center justify-center bg-black bg-opacity-30">
+                <div className="bg-white text-gray-800 px-4 py-2 rounded-full font-semibold flex items-center gap-2 shadow-lg">
+                  <FiEye size={18} />
+                  <span>View Once</span>
+                </div>
+                <p className="text-white text-xs mt-2 opacity-90">Tap to view</p>
+              </div>
+            )}
+
+            {/* Image */}
+            <img
+              src={message.imageUrl}
+              alt="Shared image"
+              className={`max-w-full h-auto object-contain ${shouldBlur ? 'blur-2xl' : ''
+                }`}
+              style={{ maxHeight: "400px" }}
+            />
+          </div>
+
+          {/* Caption */}
+          {message.text && (
+            <div className={`relative z-30 px-3 py-2 ${isMine ? "bg-pink-500 text-white" : "bg-white"
+              }`}>
+              <div className="flex items-end gap-1">
+                <span className="text-sm">{message.text}</span>
+                {isMine && <MessageTicks message={message} />}
+              </div>
+            </div>
+          )}
+
+          {/* Ticks (if no caption and not view-once or sender's view-once) */}
+          {!message.text && isMine && (
+            <div className="absolute bottom-2 right-2 bg-black bg-opacity-50 rounded-full px-2 py-1 z-30">
+              <MessageTicks message={message} />
+            </div>
+          )}
         </div>
       </div>
     );
@@ -660,7 +893,7 @@ export default function ChatPage() {
         ) : (
           messages.map((msg) => {
             const isMine = msg.senderProfileId === myProfileId;
-           
+
             return (
               <div
                 key={msg._id}
@@ -676,13 +909,14 @@ export default function ChatPage() {
               >
                 {msg.isDeleted ? (
                   renderDeletedMessage(msg)
+                ) : msg.imageUrl ? (
+                  renderImageMessage(msg)
                 ) : (
                   <div
-                    className={`px-4 py-2 rounded-2xl text-sm max-w-[70%] ${
-                      isMine
+                    className={`px-4 py-2 rounded-2xl text-sm max-w-[70%] ${isMine
                         ? "bg-pink-500 text-white rounded-br-none"
                         : "bg-white shadow rounded-bl-none"
-                    }`}
+                      }`}
                   >
                     <div className="flex items-end gap-1">
                       <div className="flex flex-col">
@@ -708,12 +942,20 @@ export default function ChatPage() {
             <TypingIndicator />
           </div>
         )}
-       
+
         <div ref={bottomRef} />
       </div>
 
       {/* INPUT */}
       <div className="flex items-center gap-2 px-3 py-3 bg-white border-t">
+        {/* Image Button */}
+        <button
+          onClick={() => setShowImagePicker(true)}
+          className="p-2 text-gray-600 hover:text-pink-500 hover:bg-pink-50 rounded-full transition-colors"
+        >
+          <FiImage size={22} />
+        </button>
+
         <input
           ref={inputRef}
           value={newMessage}
@@ -762,6 +1004,25 @@ export default function ChatPage() {
           currentText={editingMessage.text}
           onSave={handleEditMessage}
           onCancel={() => setEditingMessage(null)}
+        />
+      )}
+
+      {/* IMAGE PICKER */}
+      {showImagePicker && (
+        <ImagePicker
+          onImageSelect={handleImageSelect}
+          onCancel={() => setShowImagePicker(false)}
+        />
+      )}
+
+      {/* IMAGE VIEWER */}
+      {viewingImage && (
+        <ImageViewer
+          imageUrl={viewingImage.url}
+          caption={viewingImage.caption}
+          isViewOnce={viewingImage.isViewOnce}
+          isSender={viewingImage.isSender}
+          onClose={handleCloseImageViewer}
         />
       )}
     </div>

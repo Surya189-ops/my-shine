@@ -1,10 +1,11 @@
-// app/page.tsx
+// app/page.tsx - COMPLETE UPDATED VERSION
 "use client";
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import BottomNav from "./components/BottomNav";
 import { FiChevronDown, FiChevronRight, FiChevronLeft } from "react-icons/fi";
+import { IoChatbubbleEllipsesOutline } from "react-icons/io5";
 import DebugPanel from "./components/DebugPanel";
 
 type Tier = "bronze" | "silver" | "gold";
@@ -146,6 +147,7 @@ export default function HomePage() {
   const [loading, setLoading] = useState(true);
   const [currentPage, setCurrentPage] = useState(0);
   const [requestedProfiles, setRequestedProfiles] = useState<Set<string>>(new Set());
+  const [unreadCount, setUnreadCount] = useState(0);
 
   const oppositeGender: Gender = viewerGender;
   const allowedCountries =
@@ -158,6 +160,9 @@ export default function HomePage() {
       return;
     }
 
+    const user = JSON.parse(userStr);
+
+    // Fetch profiles
     fetch(`/api/profiles?gender=${viewerGender}`)
       .then((res) => res.json())
       .then((data) => {
@@ -167,7 +172,23 @@ export default function HomePage() {
         setLoading(false);
       })
       .catch(() => setLoading(false));
-  }, [router, oppositeGender]);
+
+    // Fetch unread message count
+    if (user.profileId) {
+      fetch(`/api/chats?profileId=${user.profileId}`)
+        .then((res) => res.json())
+        .then((data) => {
+          if (data.success) {
+            const total = data.chats.reduce(
+              (sum: number, chat: any) => sum + chat.unreadCount,
+              0
+            );
+            setUnreadCount(total);
+          }
+        })
+        .catch((err) => console.error("Failed to fetch unread count:", err));
+    }
+  }, [router, oppositeGender, viewerGender]);
 
   useEffect(() => {
     setSelectedPlan(plans[selectedTier][0]);
@@ -177,15 +198,9 @@ export default function HomePage() {
 
   /* -------- FILTER REAL PROFILES -------- */
   const filtered = profiles.filter((p) => {
-    // Basic tier and gender match
     if (p.tier !== selectedTier || p.gender !== viewerGender) return false;
-
-    // If profile has country, check if it's allowed, otherwise include it
     if (p.country && !allowedCountries.includes(p.country as Country)) return false;
-
-    // Country filter
     if (selectedCountry !== "all" && p.country !== selectedCountry) return false;
-
     return true;
   });
 
@@ -233,7 +248,6 @@ export default function HomePage() {
   const handleConnect = async (e: React.MouseEvent, profileId: string) => {
     e.stopPropagation();
 
-    // Don't allow connect for placeholder profiles
     if (!isRealProfile(profileId)) {
       return;
     }
@@ -246,7 +260,6 @@ export default function HomePage() {
 
     const user = JSON.parse(userStr);
 
-    // Check if user has profileId
     if (!user.profileId) {
       alert("Profile not found. Please complete your profile.");
       return;
@@ -279,7 +292,6 @@ export default function HomePage() {
   const handleChat = (e: React.MouseEvent, profileId: string) => {
     e.stopPropagation();
 
-    // Don't allow chat for placeholder profiles
     if (!isRealProfile(profileId)) {
       return;
     }
@@ -288,7 +300,6 @@ export default function HomePage() {
   };
 
   const handleProfileClick = (profileId: string) => {
-    // Only allow clicking real profiles
     if (!isRealProfile(profileId)) {
       return;
     }
@@ -317,16 +328,18 @@ export default function HomePage() {
       <div className="min-h-screen bg-gray-50 px-3 pb-20">
         <div className="mx-auto max-w-[560px]">
 
-          {/* TOP SECTION - COMPACT FILTERS */}
-          <div className="pt-3 pb-2 space-y-2">
+          {/* HEADER WITH MY SHINE, TIER CIRCLES, AND MESSAGES ICON - ALL IN ONE LINE */}
+          <div className="flex items-center justify-between py-3 sticky top-0 bg-gray-50 z-10">
+            {/* Left: My Shine Logo */}
+            <h1 className="text-xl font-bold text-pink-500">My Shine</h1>
 
-            {/* TIER SELECTOR */}
-            <div className="flex justify-center gap-3">
+            {/* Center: Tier Circles */}
+            <div className="flex gap-2 absolute left-1/2 transform -translate-x-1/2">
               {(["bronze", "silver", "gold"] as Tier[]).map((tier) => (
                 <button
                   key={tier}
                   onClick={() => setSelectedTier(tier)}
-                  className={`w-8 h-8 rounded-full transition-all duration-300
+                  className={`w-7 h-7 rounded-full transition-all duration-300
                     ${selectedTier === tier
                       ? `${tierColors[tier].active} shadow-lg scale-110 animate-pulse-glow`
                       : tierColors[tier].inactive
@@ -335,6 +348,22 @@ export default function HomePage() {
               ))}
             </div>
 
+            {/* Right: Messages Icon */}
+            <button
+              onClick={() => router.push("/chats")}
+              className="relative p-2 hover:bg-white rounded-full transition-colors"
+            >
+              <IoChatbubbleEllipsesOutline size={26} className="text-gray-700" />
+              {unreadCount > 0 && (
+                <div className="absolute -top-1 -right-1 w-5 h-5 bg-pink-500 text-white text-xs font-bold rounded-full flex items-center justify-center">
+                  {unreadCount > 9 ? "9+" : unreadCount}
+                </div>
+              )}
+            </button>
+          </div>
+
+          {/* FILTERS */}
+          <div className="pb-2 space-y-2">
             {/* PLAN SELECTOR */}
             <div className="flex justify-center gap-2">
               {plans[selectedTier].map((plan) => (

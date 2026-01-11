@@ -1,4 +1,4 @@
-// models/Message.ts - Updated with Edit/Delete support
+// models/Message.ts - Updated with Image & View-Once Support
 import mongoose, { Schema, models, model } from "mongoose";
 
 const MessageSchema = new Schema(
@@ -15,9 +15,38 @@ const MessageSchema = new Schema(
     },
     text: {
       type: String,
-      required: true,
       trim: true,
+      default: "", // Not required (can be empty if image-only message)
     },
+    
+    // -------- IMAGE FIELDS --------
+    imageUrl: {
+      type: String, // Base64 image data
+      default: null,
+    },
+    imageWidth: {
+      type: Number,
+      default: null,
+    },
+    imageHeight: {
+      type: Number,
+      default: null,
+    },
+    
+    // -------- VIEW ONCE FIELDS --------
+    isViewOnce: {
+      type: Boolean,
+      default: false, // True if this is a view-once image
+    },
+    viewedBy: [{
+      type: Schema.Types.ObjectId,
+      ref: "Profile",
+    }], // Array of profileIds who viewed this
+    viewedAt: {
+      type: Date, // When the receiver viewed it
+      default: null,
+    },
+    
     delivered: {
       type: Boolean,
       default: false,
@@ -42,7 +71,7 @@ const MessageSchema = new Schema(
       type: Date,
     },
     originalText: {
-      type: String, // Store original text before first edit
+      type: String,
     },
     
     // -------- DELETE FIELDS --------
@@ -54,7 +83,7 @@ const MessageSchema = new Schema(
       type: Date,
     },
     deletedBy: {
-      type: String, // "sender" | "both" | null
+      type: String, // "sender" | "receiver" | "both" | null
       default: null,
     },
     deletedForEveryone: {

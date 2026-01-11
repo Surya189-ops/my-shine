@@ -1,29 +1,46 @@
-// app/api/chat/route.ts - Updated with block checks
+// app/api/chat/route.ts - Updated with Image Support
 import { NextRequest, NextResponse } from "next/server";
 import dbConnect from "@/lib/mongodb";
 import Message from "@/models/Message";
-import BlockedUser from "@/models/BlockedUser";
 import mongoose from "mongoose";
 
 /**
- * POST /api/chat - Send a message (checks for blocks)
+ * POST /api/chat - Send a message (text and/or image)
  */
 export async function POST(req: NextRequest) {
   try {
     await dbConnect();
 
-    const { senderProfileId, receiverProfileId, text } = await req.json();
+    const { 
+      senderProfileId, 
+      receiverProfileId, 
+      text, 
+      imageUrl, 
+      imageWidth, 
+      imageHeight,
+      isViewOnce 
+    } = await req.json();
 
     console.log("📨 Send message request:", {
       senderProfileId,
       receiverProfileId,
-      text,
+      hasText: !!text,
+      hasImage: !!imageUrl,
+      isViewOnce: !!isViewOnce,
     });
 
     // Validation
-    if (!senderProfileId || !receiverProfileId || !text) {
+    if (!senderProfileId || !receiverProfileId) {
       return NextResponse.json(
         { success: false, message: "Missing required fields" },
+        { status: 400 }
+      );
+    }
+
+    // At least text or image must be present
+    if (!text && !imageUrl) {
+      return NextResponse.json(
+        { success: false, message: "Message must have either text or image" },
         { status: 400 }
       );
     }
@@ -34,36 +51,35 @@ export async function POST(req: NextRequest) {
       !mongoose.Types.ObjectId.isValid(receiverProfileId)
     ) {
       return NextResponse.json(
-        { success: false, message: "Invalid profile ID (dummy profiles cannot chat)" },
+        { success: false, message: "Invalid profile ID" },
         { status: 400 }
       );
     }
 
-    // CHECK IF BLOCKED
-    const isBlocked = await BlockedUser.findOne({
-      $or: [
-        { blockerProfileId: senderProfileId, blockedProfileId: receiverProfileId },
-        { blockerProfileId: receiverProfileId, blockedProfileId: senderProfileId },
-      ],
-    });
-
-    if (isBlocked) {
-      return NextResponse.json(
-        { success: false, message: "Cannot send message to this user" },
-        { status: 403 }
-      );
-    }
-
     // Create message
-    const message = await Message.create({
+    const messageData: any = {
       senderProfileId,
       receiverProfileId,
-      text: text.trim(),
       delivered: false,
       read: false,
-    });
+    };
 
-    console.log("✅ Message created:", message);
+    // Add text if present
+    if (text) {
+      messageData.text = text.trim();
+    }
+
+    // Add image if present
+    if (imageUrl) {
+      messageData.imageUrl = imageUrl;
+      messageData.imageWidth = imageWidth || null;
+      messageData.imageHeight = imageHeight || null;
+      messageData.isViewOnce = isViewOnce || false;
+    }
+
+    const message = await Message.create(messageData);
+
+    console.log("✅ Message created:", message._id);
 
     return NextResponse.json({
       success: true,
@@ -79,7 +95,7 @@ export async function POST(req: NextRequest) {
 }
 
 /**
- * GET /api/chat - Get chat history (filters out blocked conversations)
+ * GET /api/chat - Get chat history
  */
 export async function GET(req: NextRequest) {
   try {
@@ -109,20 +125,6 @@ export async function GET(req: NextRequest) {
       );
     }
 
-    // CHECK IF BLOCKED
-    const isBlocked = await BlockedUser.findOne({
-      blockerProfileId: myProfileId,
-      blockedProfileId: otherProfileId,
-    });
-
-    // If I blocked them, return empty messages
-    if (isBlocked) {
-      return NextResponse.json({
-        success: true,
-        messages: [],
-      });
-    }
-
     // Fetch messages
     const messages = await Message.find({
       $or: [
@@ -133,9 +135,30 @@ export async function GET(req: NextRequest) {
 
     console.log(`✅ Found ${messages.length} messages`);
 
+    // Process view-once images for the receiver
+    const processedMessages = messages.map((msg) => {
+      const msgObj = msg.toObject();
+      
+      // If it's a view-once image
+      if (msgObj.isViewOnce && msgObj.imageUrl) {
+        const isReceiver = msgObj.receiverProfileId.toString() === myProfileId;
+        const hasViewed = msgObj.viewedBy?.some(
+          (id: any) => id.toString() === myProfileId
+        );
+        
+        // Hide image URL if receiver has already viewed it
+        if (isReceiver && hasViewed) {
+          msgObj.imageUrl = null; // Clear the image
+          msgObj.text = ""; // Clear any text too
+        }
+      }
+      
+      return msgObj;
+    });
+
     return NextResponse.json({
       success: true,
-      messages,
+      messages: processedMessages,
     });
   } catch (error: any) {
     console.error("❌ Fetch messages error:", error);
