@@ -1,4 +1,4 @@
-// pages/api/socket.ts - Updated with View-Once Events
+// pages/api/socket.ts - Updated with Payment Flow Events
 import { Server as NetServer } from "http";
 import { NextApiRequest } from "next";
 import { Server as ServerIO } from "socket.io";
@@ -114,6 +114,50 @@ export default async function handler(
         socket.to(data.roomId).emit("messages-status-update", {
           messageIds: data.messageIds,
           read: true,
+        });
+      });
+
+      /* -------- ✅ NEW: CONNECTION ACCEPTED (Payment Flow) -------- */
+      socket.on("connection-accepted", (data: {
+        toProfileId: string;
+        fromProfileId: string;
+        fromName: string;
+        fromImageUrl?: string;
+        tier: string;
+        requestId: string;
+      }) => {
+        console.log("💰 Connection accepted - Notifying sender for payment:", data);
+        
+        const toRoom = `user:${data.toProfileId}`;
+        
+        console.log(`📤 Emitting connection-accepted-notify to room: ${toRoom}`);
+        
+        io.to(toRoom).emit("connection-accepted-notify", {
+          fromProfileId: data.fromProfileId,
+          fromName: data.fromName,
+          fromImageUrl: data.fromImageUrl,
+          tier: data.tier,
+          requestId: data.requestId,
+          timestamp: new Date().toISOString(),
+        });
+      });
+
+      /* -------- ✅ NEW: PAYMENT DECLINED (Person A deleted payment notification) -------- */
+      socket.on("payment-declined", (data: {
+        toProfileId: string;
+        fromProfileId: string;
+        requestId: string;
+      }) => {
+        console.log("❌ Payment declined - Notifying acceptor:", data);
+        
+        const toRoom = `user:${data.toProfileId}`;
+        
+        console.log(`📤 Emitting payment-declined-notify to room: ${toRoom}`);
+        
+        io.to(toRoom).emit("payment-declined-notify", {
+          fromProfileId: data.fromProfileId,
+          requestId: data.requestId,
+          timestamp: new Date().toISOString(),
         });
       });
 

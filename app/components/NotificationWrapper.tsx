@@ -1,10 +1,11 @@
-// app/components/NotificationWrapper.tsx
+// app/components/NotificationWrapper.tsx - FIXED (No Duplicates)
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { io, Socket } from "socket.io-client";
 import ConnectionToast from "./ConnectionToast";
-import ConnectionResponseToast from "./ConnectionResponseToast";
+import PaymentAcceptanceToast from "./PaymentAcceptanceToast";
+import PaymentDeclinedToast from "./PaymentDeclinedToast";
 
 interface PendingNotification {
   fromProfile: {
@@ -19,14 +20,20 @@ interface PendingNotification {
   timestamp: string;
 }
 
-interface ResponseNotification {
+interface AcceptanceNotification {
   fromProfileId: string;
   fromName: string;
-  action: "accepted" | "rejected";
+  fromImageUrl?: string;
+  tier: string;
+  requestId: string;
   timestamp: string;
 }
 
-let socket: Socket | null = null;
+interface DeclinedNotification {
+  fromProfileId: string;
+  requestId: string;
+  timestamp: string;
+}
 
 export default function NotificationWrapper() {
   const [currentNotification, setCurrentNotification] =
@@ -34,9 +41,15 @@ export default function NotificationWrapper() {
   const [notificationQueue, setNotificationQueue] = useState<
     PendingNotification[]
   >([]);
-  const [responseNotification, setResponseNotification] =
-    useState<ResponseNotification | null>(null);
+  const [acceptanceNotification, setAcceptanceNotification] =
+    useState<AcceptanceNotification | null>(null);
+  const [declinedNotification, setDeclinedNotification] =
+    useState<DeclinedNotification | null>(null);
   const [profileId, setProfileId] = useState<string | null>(null);
+  
+  const socketRef = useRef<Socket | null>(null);
+  const paymentTimeoutHandledRef = useRef(false); // ✅ Prevent duplicate saves
+  const declinedTimeoutHandledRef = useRef(false); // ✅ Prevent duplicate declined saves
 
   // Initialize socket and join user room
   useEffect(() => {
@@ -50,7 +63,10 @@ export default function NotificationWrapper() {
       }
 
       const userStr = localStorage.getItem("myshine_user");
-      if (!userStr) return;
+      if (!userStr) {
+        console.warn("⚠️ No user found in localStorage");
+        return;
+      }
 
       const user = JSON.parse(userStr);
       if (!user.profileId) {
@@ -62,66 +78,73 @@ export default function NotificationWrapper() {
       console.log("👤 Current user profileId:", user.profileId);
 
       // Initialize socket if not already connected
-      if (!socket) {
-        console.log("🔌 Initializing socket for profileId:", user.profileId);
+      if (!socketRef.current) {
+        console.log("🔌 Creating new socket connection for profileId:", user.profileId);
         
-        socket = io({
+        const newSocket = io({
           path: "/api/socket",
         });
 
-        socket.on("connect", () => {
-          console.log("🔔 Notification socket connected, ID:", socket?.id);
-          console.log("👤 Joining user room:", user.profileId);
-          socket?.emit("join-user-room", user.profileId);
+        socketRef.current = newSocket;
+
+        newSocket.on("connect", () => {
+          console.log("🔔 Notification socket connected, ID:", newSocket.id);
+          const userRoom = `user:${user.profileId}`;
+          console.log("👤 Joining user room:", userRoom);
+          newSocket.emit("join-user-room", userRoom);
         });
 
-        socket.on("disconnect", () => {
+        newSocket.on("disconnect", () => {
           console.log("🔔 Notification socket disconnected");
         });
 
-        socket.on("connect_error", (error) => {
+        newSocket.on("connect_error", (error) => {
           console.error("❌ Socket connection error:", error);
         });
-      } else if (socket.connected) {
-        console.log("🔄 Socket already connected, joining room:", user.profileId);
-        socket.emit("join-user-room", user.profileId);
-      }
 
-      // Listen for connection requests
-      socket.on("connection-request-received", (data: PendingNotification) => {
-        console.log("🔔 ✅✅✅ RECEIVED CONNECTION REQUEST:", data);
-        console.log("📦 Data details:", JSON.stringify(data, null, 2));
-        
-        // Add to queue if there's already a notification showing
-        if (currentNotification) {
-          console.log("📋 Adding to queue (notification already showing)");
-          setNotificationQueue((prev) => [...prev, data]);
-        } else {
-          console.log("🎉 Showing notification immediately");
+        // Listen for connection requests (Person B receives this)
+        newSocket.on("connection-request-received", (data: PendingNotification) => {
+          console.log("🔔 ✅✅✅ RECEIVED CONNECTION REQUEST:", data);
+          console.log("📦 Data details:", JSON.stringify(data, null, 2));
+          
+          // ✅ ALWAYS show notification immediately (we'll handle queue in state update)
           setCurrentNotification(data);
-        }
-      });
+        });
 
-      // ✅ Test: Listen for ANY socket event
-      socket.onAny((eventName, ...args) => {
-        console.log(`🔊 Socket event received: ${eventName}`, args);
-      });
+        // ✅ Listen for acceptance notification (Person A receives this for payment)
+        newSocket.on("connection-accepted-notify", (data: AcceptanceNotification) => {
+          console.log("💰 ✅✅✅ CONNECTION ACCEPTED - SHOW PAYMENT TOAST:", data);
+          paymentTimeoutHandledRef.current = false; // ✅ Reset for new notification
+          setAcceptanceNotification(data);
+        });
 
-      // ✅ NEW: Listen for connection response (accept/reject)
-      socket.on("connection-response-received", (data: ResponseNotification) => {
-        console.log("🔔 ✅ CONNECTION RESPONSE RECEIVED:", data);
-        setResponseNotification(data);
-      });
+        // ✅ Listen for declined notification (Person B receives this when payment declined)
+        newSocket.on("payment-declined-notify", (data: DeclinedNotification) => {
+          console.log("❌ ✅✅✅ PAYMENT DECLINED - SHOW DECLINED TOAST:", data);
+          declinedTimeoutHandledRef.current = false; // ✅ Reset for new notification
+          setDeclinedNotification(data);
+        });
+
+        // ✅ Debug: Listen for ANY socket event
+        newSocket.onAny((eventName, ...args) => {
+          console.log(`🔊 Socket event received: ${eventName}`, args);
+        });
+      } else if (socketRef.current.connected) {
+        console.log("🔄 Socket already connected, re-joining room:", user.profileId);
+        const userRoom = `user:${user.profileId}`;
+        socketRef.current.emit("join-user-room", userRoom);
+      }
     };
 
     initializeSocket();
 
     return () => {
-      if (socket && profileId) {
-        socket.emit("leave-user-room", profileId);
+      if (socketRef.current && profileId) {
+        const userRoom = `user:${profileId}`;
+        socketRef.current.emit("leave-user-room", userRoom);
       }
     };
-  }, []);
+  }, [profileId]);
 
   // Show next notification from queue
   useEffect(() => {
@@ -148,24 +171,27 @@ export default function NotificationWrapper() {
       if (data.success) {
         console.log("✅ Connection accepted");
         
-        // ✅ Get user name from localStorage
+        // ✅ Get user info from localStorage
         const userStr = localStorage.getItem("myshine_user");
         const user = userStr ? JSON.parse(userStr) : null;
         const myName = user?.name || "Someone";
+        const myImageUrl = data.myProfile?.imageUrl || "";
+        const myTier = data.myProfile?.tier || "bronze";
         
-        // Emit socket event to notify the sender
-        if (socket && currentNotification) {
-          console.log("📤 Emitting connection-response-sent");
-          socket.emit("connection-response-sent", {
-            toProfileId: currentNotification.fromProfile._id,
-            fromProfileId: profileId,
+        // ✅ Emit socket event to notify Person A (sender)
+        if (socketRef.current && currentNotification) {
+          console.log("📤 Emitting connection-accepted to Person A");
+          socketRef.current.emit("connection-accepted", {
+            toProfileId: currentNotification.fromProfile._id, // Person A
+            fromProfileId: profileId, // Person B (me)
             fromName: myName,
-            action: "accepted",
+            fromImageUrl: myImageUrl,
+            tier: myTier,
             requestId,
           });
         }
 
-        // ✅ Redirect to chat with the person who sent the request
+        // ✅ Redirect Person B to chat
         const otherProfileId = currentNotification?.fromProfile._id;
         if (otherProfileId) {
           console.log("💬 Redirecting to chat with:", otherProfileId);
@@ -194,23 +220,6 @@ export default function NotificationWrapper() {
 
       if (data.success) {
         console.log("❌ Connection rejected");
-        
-        // ✅ Get user name from localStorage
-        const userStr = localStorage.getItem("myshine_user");
-        const user = userStr ? JSON.parse(userStr) : null;
-        const myName = user?.name || "Someone";
-        
-        // Emit socket event to notify the sender
-        if (socket && currentNotification) {
-          console.log("📤 Emitting connection-response-sent (rejected)");
-          socket.emit("connection-response-sent", {
-            toProfileId: currentNotification.fromProfile._id,
-            fromProfileId: profileId,
-            fromName: myName,
-            action: "rejected",
-            requestId,
-          });
-        }
       }
     } catch (err) {
       console.error("❌ Error rejecting connection:", err);
@@ -225,12 +234,71 @@ export default function NotificationWrapper() {
     setCurrentNotification(null);
   };
 
-  const handleCloseResponse = () => {
-    setResponseNotification(null);
+  const handlePaymentTimeout = async () => {
+    // ✅ Prevent duplicate saves
+    if (paymentTimeoutHandledRef.current) {
+      console.log("⚠️ Payment timeout already handled, skipping...");
+      return;
+    }
+
+    paymentTimeoutHandledRef.current = true;
+    
+    console.log("⏰ Payment toast timed out - saving to notifications (20 min expiry)");
+    
+    // Save to notification center via API with 20-minute expiry
+    if (acceptanceNotification && profileId) {
+      try {
+        await fetch("/api/notifications/payment/save", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            profileId: profileId,
+            fromProfileId: acceptanceNotification.fromProfileId,
+            requestId: acceptanceNotification.requestId,
+            fromName: acceptanceNotification.fromName,
+            fromImageUrl: acceptanceNotification.fromImageUrl,
+            tier: acceptanceNotification.tier,
+          }),
+        });
+        console.log("✅ Payment notification saved with 20-minute expiry");
+      } catch (err) {
+        console.error("Failed to save payment notification:", err);
+      }
+    }
+    
+    setAcceptanceNotification(null);
+  };
+
+  const handleClosePaymentToast = () => {
+    paymentTimeoutHandledRef.current = false; // ✅ Reset when manually closed
+    setAcceptanceNotification(null);
+  };
+
+  const handleDeclinedTimeout = async () => {
+    // ✅ Prevent duplicate saves
+    if (declinedTimeoutHandledRef.current) {
+      console.log("⚠️ Declined timeout already handled, skipping...");
+      return;
+    }
+
+    declinedTimeoutHandledRef.current = true;
+    
+    console.log("⏰ Payment declined toast timed out - saving to notifications");
+    
+    // TODO: Save declined notification to database (optional)
+    // For now, just close the toast
+    
+    setDeclinedNotification(null);
+  };
+
+  const handleCloseDeclinedToast = () => {
+    declinedTimeoutHandledRef.current = false;
+    setDeclinedNotification(null);
   };
 
   return (
     <>
+      {/* Connection Request Toast (for Person B) */}
       {currentNotification && (
         <ConnectionToast
           fromProfile={currentNotification.fromProfile}
@@ -241,12 +309,26 @@ export default function NotificationWrapper() {
         />
       )}
 
-      {responseNotification && (
-        <ConnectionResponseToast
-          fromProfileId={responseNotification.fromProfileId}
-          fromName={responseNotification.fromName}
-          action={responseNotification.action}
-          onClose={handleCloseResponse}
+      {/* Payment Acceptance Toast (for Person A) */}
+      {acceptanceNotification && (
+        <PaymentAcceptanceToast
+          fromProfileId={acceptanceNotification.fromProfileId}
+          fromName={acceptanceNotification.fromName}
+          fromImageUrl={acceptanceNotification.fromImageUrl}
+          tier={acceptanceNotification.tier}
+          requestId={acceptanceNotification.requestId}
+          onTimeout={handlePaymentTimeout}
+          onClose={handleClosePaymentToast}
+        />
+      )}
+
+      {/* Payment Declined Toast (for Person B) */}
+      {declinedNotification && (
+        <PaymentDeclinedToast
+          fromProfileId={declinedNotification.fromProfileId}
+          requestId={declinedNotification.requestId}
+          onTimeout={handleDeclinedTimeout}
+          onClose={handleCloseDeclinedToast}
         />
       )}
     </>

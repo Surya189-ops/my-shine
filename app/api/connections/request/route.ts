@@ -1,8 +1,8 @@
-// app/api/connections/request/route.ts - Updated with block check
+// app/api/connections/request/route.ts - FIXED VERSION
 import { NextRequest, NextResponse } from "next/server";
 import dbConnect from "@/lib/mongodb";
 import ConnectionRequest from "@/models/ConnectionRequest";
-import BlockedUser from "@/models/BlockedUser";
+import Profile from "@/models/Profile";
 import mongoose from "mongoose";
 
 export async function POST(req: NextRequest) {
@@ -36,21 +36,6 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // CHECK IF BLOCKED
-    const isBlocked = await BlockedUser.findOne({
-      $or: [
-        { blockerProfileId: fromProfileId, blockedProfileId: toProfileId },
-        { blockerProfileId: toProfileId, blockedProfileId: fromProfileId },
-      ],
-    });
-
-    if (isBlocked) {
-      return NextResponse.json(
-        { success: false, message: "Cannot send connection request to this user" },
-        { status: 403 }
-      );
-    }
-
     // Check if connection already exists
     const existing = await ConnectionRequest.findOne({
       $or: [
@@ -80,13 +65,37 @@ export async function POST(req: NextRequest) {
       existing.toProfileId = toProfileId;
       await existing.save();
 
-      // Emit socket event
-      if (global.io) {
+      // ✅ FETCH SENDER'S PROFILE DATA
+      const senderProfile = await Profile.findById(fromProfileId);
+
+      // Emit socket event with COMPLETE profile data
+      if (global.io && senderProfile) {
         const userRoom = `user:${toProfileId}`;
-        global.io.to(userRoom).emit("connection-request-received", {
-          fromProfileId,
-          toProfileId,
+        
+        console.log("🔔 Emitting connection request to room:", userRoom);
+        console.log("📦 Profile data:", {
+          fromProfile: {
+            _id: senderProfile._id,
+            name: senderProfile.name,
+            imageUrl: senderProfile.imageUrl,
+            age: senderProfile.age,
+            gender: senderProfile.gender,
+            tier: senderProfile.tier,
+          },
           requestId: existing._id,
+        });
+
+        global.io.to(userRoom).emit("connection-request-received", {
+          fromProfile: {
+            _id: senderProfile._id.toString(),
+            name: senderProfile.name,
+            imageUrl: senderProfile.imageUrl || "",
+            age: senderProfile.age,
+            gender: senderProfile.gender,
+            tier: senderProfile.tier,
+          },
+          requestId: existing._id.toString(),
+          timestamp: new Date().toISOString(),
         });
       }
 
@@ -104,16 +113,40 @@ export async function POST(req: NextRequest) {
       status: "pending",
     });
 
-    // Emit socket event for real-time notification
-    if (global.io) {
-      const userRoom = `user:${toProfileId}`;
-      console.log("🔔 Emitting connection request to room:", userRoom);
+    // ✅ FETCH SENDER'S PROFILE DATA
+    const senderProfile = await Profile.findById(fromProfileId);
 
-      global.io.to(userRoom).emit("connection-request-received", {
-        fromProfileId,
-        toProfileId,
+    // Emit socket event for real-time notification with COMPLETE profile data
+    if (global.io && senderProfile) {
+      const userRoom = `user:${toProfileId}`;
+      
+      console.log("🔔 Emitting connection request to room:", userRoom);
+      console.log("📦 Profile data:", {
+        fromProfile: {
+          _id: senderProfile._id,
+          name: senderProfile.name,
+          imageUrl: senderProfile.imageUrl,
+          age: senderProfile.age,
+          gender: senderProfile.gender,
+          tier: senderProfile.tier,
+        },
         requestId: request._id,
       });
+
+      global.io.to(userRoom).emit("connection-request-received", {
+        fromProfile: {
+          _id: senderProfile._id.toString(),
+          name: senderProfile.name,
+          imageUrl: senderProfile.imageUrl || "",
+          age: senderProfile.age,
+          gender: senderProfile.gender,
+          tier: senderProfile.tier,
+        },
+        requestId: request._id.toString(),
+        timestamp: new Date().toISOString(),
+      });
+    } else {
+      console.error("❌ Failed to emit socket event - missing io or profile");
     }
 
     return NextResponse.json({
