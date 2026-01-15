@@ -1,9 +1,11 @@
-// app/components/NotificationWrapper.tsx - FIXED (No Duplicates)
+// app/components/NotificationWrapper.tsx - Updated with ConnectedToast
 "use client";
 
 import { useEffect, useState, useRef } from "react";
 import { io, Socket } from "socket.io-client";
+import { useRouter } from "next/navigation";
 import ConnectionToast from "./ConnectionToast";
+import ConnectedToast from "./ConnectedToast";
 import PaymentAcceptanceToast from "./PaymentAcceptanceToast";
 import PaymentDeclinedToast from "./PaymentDeclinedToast";
 
@@ -36,25 +38,21 @@ interface DeclinedNotification {
 }
 
 export default function NotificationWrapper() {
-  const [currentNotification, setCurrentNotification] =
-    useState<PendingNotification | null>(null);
-  const [notificationQueue, setNotificationQueue] = useState<
-    PendingNotification[]
-  >([]);
-  const [acceptanceNotification, setAcceptanceNotification] =
-    useState<AcceptanceNotification | null>(null);
-  const [declinedNotification, setDeclinedNotification] =
-    useState<DeclinedNotification | null>(null);
+  const router = useRouter();
+  const [currentNotification, setCurrentNotification] = useState<PendingNotification | null>(null);
+  const [showConnectedToast, setShowConnectedToast] = useState(false);
+  const [acceptanceNotification, setAcceptanceNotification] = useState<AcceptanceNotification | null>(null);
+  const [declinedNotification, setDeclinedNotification] = useState<DeclinedNotification | null>(null);
   const [profileId, setProfileId] = useState<string | null>(null);
   
   const socketRef = useRef<Socket | null>(null);
-  const paymentTimeoutHandledRef = useRef(false); // ✅ Prevent duplicate saves
-  const declinedTimeoutHandledRef = useRef(false); // ✅ Prevent duplicate declined saves
+  const paymentTimeoutHandledRef = useRef(false);
+  const declinedTimeoutHandledRef = useRef(false);
+  const redirectProfileIdRef = useRef<string | null>(null);
 
-  // Initialize socket and join user room
+  // Initialize socket
   useEffect(() => {
     const initializeSocket = async () => {
-      // First, ensure socket server is running
       try {
         await fetch("/api/socket");
         console.log("✅ Socket server ready");
@@ -63,76 +61,39 @@ export default function NotificationWrapper() {
       }
 
       const userStr = localStorage.getItem("myshine_user");
-      if (!userStr) {
-        console.warn("⚠️ No user found in localStorage");
-        return;
-      }
+      if (!userStr) return;
 
       const user = JSON.parse(userStr);
-      if (!user.profileId) {
-        console.warn("⚠️ No profileId found in localStorage");
-        return;
-      }
+      if (!user.profileId) return;
 
       setProfileId(user.profileId);
-      console.log("👤 Current user profileId:", user.profileId);
 
-      // Initialize socket if not already connected
       if (!socketRef.current) {
-        console.log("🔌 Creating new socket connection for profileId:", user.profileId);
-        
-        const newSocket = io({
-          path: "/api/socket",
-        });
-
+        const newSocket = io({ path: "/api/socket" });
         socketRef.current = newSocket;
 
         newSocket.on("connect", () => {
-          console.log("🔔 Notification socket connected, ID:", newSocket.id);
+          console.log("🔔 Socket connected:", newSocket.id);
           const userRoom = `user:${user.profileId}`;
-          console.log("👤 Joining user room:", userRoom);
           newSocket.emit("join-user-room", userRoom);
         });
 
-        newSocket.on("disconnect", () => {
-          console.log("🔔 Notification socket disconnected");
-        });
-
-        newSocket.on("connect_error", (error) => {
-          console.error("❌ Socket connection error:", error);
-        });
-
-        // Listen for connection requests (Person B receives this)
         newSocket.on("connection-request-received", (data: PendingNotification) => {
-          console.log("🔔 ✅✅✅ RECEIVED CONNECTION REQUEST:", data);
-          console.log("📦 Data details:", JSON.stringify(data, null, 2));
-          
-          // ✅ ALWAYS show notification immediately (we'll handle queue in state update)
+          console.log("🔔 Connection request received:", data);
           setCurrentNotification(data);
         });
 
-        // ✅ Listen for acceptance notification (Person A receives this for payment)
         newSocket.on("connection-accepted-notify", (data: AcceptanceNotification) => {
-          console.log("💰 ✅✅✅ CONNECTION ACCEPTED - SHOW PAYMENT TOAST:", data);
-          paymentTimeoutHandledRef.current = false; // ✅ Reset for new notification
+          console.log("💰 Payment notification:", data);
+          paymentTimeoutHandledRef.current = false;
           setAcceptanceNotification(data);
         });
 
-        // ✅ Listen for declined notification (Person B receives this when payment declined)
         newSocket.on("payment-declined-notify", (data: DeclinedNotification) => {
-          console.log("❌ ✅✅✅ PAYMENT DECLINED - SHOW DECLINED TOAST:", data);
-          declinedTimeoutHandledRef.current = false; // ✅ Reset for new notification
+          console.log("❌ Payment declined:", data);
+          declinedTimeoutHandledRef.current = false;
           setDeclinedNotification(data);
         });
-
-        // ✅ Debug: Listen for ANY socket event
-        newSocket.onAny((eventName, ...args) => {
-          console.log(`🔊 Socket event received: ${eventName}`, args);
-        });
-      } else if (socketRef.current.connected) {
-        console.log("🔄 Socket already connected, re-joining room:", user.profileId);
-        const userRoom = `user:${user.profileId}`;
-        socketRef.current.emit("join-user-room", userRoom);
       }
     };
 
@@ -140,20 +101,10 @@ export default function NotificationWrapper() {
 
     return () => {
       if (socketRef.current && profileId) {
-        const userRoom = `user:${profileId}`;
-        socketRef.current.emit("leave-user-room", userRoom);
+        socketRef.current.emit("leave-user-room", `user:${profileId}`);
       }
     };
   }, [profileId]);
-
-  // Show next notification from queue
-  useEffect(() => {
-    if (!currentNotification && notificationQueue.length > 0) {
-      const next = notificationQueue[0];
-      setNotificationQueue((prev) => prev.slice(1));
-      setCurrentNotification(next);
-    }
-  }, [currentNotification, notificationQueue]);
 
   const handleAccept = async (requestId: string) => {
     try {
@@ -171,38 +122,29 @@ export default function NotificationWrapper() {
       if (data.success) {
         console.log("✅ Connection accepted");
         
-        // ✅ Get user info from localStorage
-        const userStr = localStorage.getItem("myshine_user");
-        const user = userStr ? JSON.parse(userStr) : null;
-        const myName = user?.name || "Someone";
-        const myImageUrl = data.myProfile?.imageUrl || "";
-        const myTier = data.myProfile?.tier || "bronze";
-        
-        // ✅ Emit socket event to notify Person A (sender)
-        if (socketRef.current && currentNotification) {
-          console.log("📤 Emitting connection-accepted to Person A");
-          socketRef.current.emit("connection-accepted", {
-            toProfileId: currentNotification.fromProfile._id, // Person A
-            fromProfileId: profileId, // Person B (me)
-            fromName: myName,
-            fromImageUrl: myImageUrl,
-            tier: myTier,
-            requestId,
-          });
-        }
-
-        // ✅ Redirect Person B to chat
+        // Store the profile ID for redirection
         const otherProfileId = currentNotification?.fromProfile._id;
         if (otherProfileId) {
-          console.log("💬 Redirecting to chat with:", otherProfileId);
-          window.location.href = `/chat/${otherProfileId}`;
+          redirectProfileIdRef.current = otherProfileId;
         }
+
+        // Close connection toast
+        setCurrentNotification(null);
+        
+        // Show "Connected!" toast
+        setShowConnectedToast(true);
+        
+        // After 2 seconds, redirect to chat
+        setTimeout(() => {
+          if (redirectProfileIdRef.current) {
+            router.push(`/chat/${redirectProfileIdRef.current}`);
+          }
+        }, 2000);
       }
     } catch (err) {
       console.error("❌ Error accepting connection:", err);
+      setCurrentNotification(null);
     }
-
-    setCurrentNotification(null);
   };
 
   const handleReject = async (requestId: string) => {
@@ -229,30 +171,24 @@ export default function NotificationWrapper() {
   };
 
   const handleTimeout = () => {
-    console.log("⏰ Notification timed out - moved to notification center");
-    // Notification will be available in /notifications page via API
+    console.log("⏰ Toast timeout - moving to notifications");
+    window.dispatchEvent(new Event("refreshNotificationBadge"));
     setCurrentNotification(null);
   };
 
   const handlePaymentTimeout = async () => {
-    // ✅ Prevent duplicate saves
-    if (paymentTimeoutHandledRef.current) {
-      console.log("⚠️ Payment timeout already handled, skipping...");
-      return;
-    }
-
+    if (paymentTimeoutHandledRef.current) return;
     paymentTimeoutHandledRef.current = true;
     
-    console.log("⏰ Payment toast timed out - saving to notifications (20 min expiry)");
+    console.log("⏰ Payment toast timeout");
     
-    // Save to notification center via API with 20-minute expiry
     if (acceptanceNotification && profileId) {
       try {
         await fetch("/api/notifications/payment/save", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            profileId: profileId,
+            profileId,
             fromProfileId: acceptanceNotification.fromProfileId,
             requestId: acceptanceNotification.requestId,
             fromName: acceptanceNotification.fromName,
@@ -260,7 +196,8 @@ export default function NotificationWrapper() {
             tier: acceptanceNotification.tier,
           }),
         });
-        console.log("✅ Payment notification saved with 20-minute expiry");
+        
+        window.dispatchEvent(new Event("refreshNotificationBadge"));
       } catch (err) {
         console.error("Failed to save payment notification:", err);
       }
@@ -269,36 +206,15 @@ export default function NotificationWrapper() {
     setAcceptanceNotification(null);
   };
 
-  const handleClosePaymentToast = () => {
-    paymentTimeoutHandledRef.current = false; // ✅ Reset when manually closed
-    setAcceptanceNotification(null);
-  };
-
-  const handleDeclinedTimeout = async () => {
-    // ✅ Prevent duplicate saves
-    if (declinedTimeoutHandledRef.current) {
-      console.log("⚠️ Declined timeout already handled, skipping...");
-      return;
-    }
-
+  const handleDeclinedTimeout = () => {
+    if (declinedTimeoutHandledRef.current) return;
     declinedTimeoutHandledRef.current = true;
-    
-    console.log("⏰ Payment declined toast timed out - saving to notifications");
-    
-    // TODO: Save declined notification to database (optional)
-    // For now, just close the toast
-    
-    setDeclinedNotification(null);
-  };
-
-  const handleCloseDeclinedToast = () => {
-    declinedTimeoutHandledRef.current = false;
     setDeclinedNotification(null);
   };
 
   return (
     <>
-      {/* Connection Request Toast (for Person B) */}
+      {/* Connection Request Toast */}
       {currentNotification && (
         <ConnectionToast
           fromProfile={currentNotification.fromProfile}
@@ -309,7 +225,12 @@ export default function NotificationWrapper() {
         />
       )}
 
-      {/* Payment Acceptance Toast (for Person A) */}
+      {/* Connected Toast - Shows after accepting */}
+      {showConnectedToast && (
+        <ConnectedToast onClose={() => setShowConnectedToast(false)} />
+      )}
+
+      {/* Payment Toast */}
       {acceptanceNotification && (
         <PaymentAcceptanceToast
           fromProfileId={acceptanceNotification.fromProfileId}
@@ -318,17 +239,23 @@ export default function NotificationWrapper() {
           tier={acceptanceNotification.tier}
           requestId={acceptanceNotification.requestId}
           onTimeout={handlePaymentTimeout}
-          onClose={handleClosePaymentToast}
+          onClose={() => {
+            paymentTimeoutHandledRef.current = false;
+            setAcceptanceNotification(null);
+          }}
         />
       )}
 
-      {/* Payment Declined Toast (for Person B) */}
+      {/* Payment Declined Toast */}
       {declinedNotification && (
         <PaymentDeclinedToast
           fromProfileId={declinedNotification.fromProfileId}
           requestId={declinedNotification.requestId}
           onTimeout={handleDeclinedTimeout}
-          onClose={handleCloseDeclinedToast}
+          onClose={() => {
+            declinedTimeoutHandledRef.current = false;
+            setDeclinedNotification(null);
+          }}
         />
       )}
     </>

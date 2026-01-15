@@ -1,9 +1,10 @@
-// app/components/ConnectionToast.tsx
+
+// FILE 1: app/components/ConnectionToast.tsx
+
 "use client";
 
 import { useEffect, useState } from "react";
-import { FaTimes, FaCheck } from "react-icons/fa";
-import { useRouter } from "next/navigation";
+import { FiX, FiCheck } from "react-icons/fi";
 
 interface ConnectionToastProps {
   fromProfile: {
@@ -27,18 +28,15 @@ export default function ConnectionToast({
   onReject,
   onTimeout,
 }: ConnectionToastProps) {
-  const router = useRouter();
-  const [timeLeft, setTimeLeft] = useState(7);
   const [isVisible, setIsVisible] = useState(true);
-  const [isProcessing, setIsProcessing] = useState(false);
-  const [acceptingMessage, setAcceptingMessage] = useState(false);
+  const [timeLeft, setTimeLeft] = useState(7);
 
   useEffect(() => {
     // Countdown timer
-    const timer = setInterval(() => {
+    const interval = setInterval(() => {
       setTimeLeft((prev) => {
         if (prev <= 1) {
-          clearInterval(timer);
+          clearInterval(interval);
           handleTimeout();
           return 0;
         }
@@ -46,146 +44,115 @@ export default function ConnectionToast({
       });
     }, 1000);
 
-    return () => clearInterval(timer);
+    return () => clearInterval(interval);
   }, []);
 
   const handleTimeout = () => {
     setIsVisible(false);
-    setTimeout(onTimeout, 300); // Wait for fade-out animation
-  };
-
-  const handleAccept = async () => {
-    if (isProcessing) return;
-    setIsProcessing(true);
-    setAcceptingMessage(true);
-    
-    // Show accepting message for 1 second before redirect
     setTimeout(() => {
-      setIsVisible(false);
-      setTimeout(() => onAccept(requestId), 300);
-    }, 1000);
+      onTimeout();
+    }, 300);
   };
 
-  const handleReject = async () => {
-    if (isProcessing) return;
-    setIsProcessing(true);
+  const handleAccept = () => {
     setIsVisible(false);
-    setTimeout(() => onReject(requestId), 300);
+    setTimeout(() => {
+      onAccept(requestId);
+    }, 300);
   };
 
-  const handleProfileClick = () => {
-    router.push(`/profile/${fromProfile._id}`);
-  };
-
-  // Get tier color
-  const getTierColor = (tier: string) => {
-    switch (tier) {
-      case "gold":
-        return "from-yellow-400 via-yellow-500 to-amber-500";
-      case "silver":
-        return "from-gray-300 via-gray-400 to-gray-500";
-      case "bronze":
-        return "from-orange-400 via-amber-600 to-orange-700";
-      default:
-        return "from-gray-400 to-gray-500";
-    }
+  const handleReject = () => {
+    setIsVisible(false);
+    setTimeout(() => {
+      onReject(requestId);
+    }, 300);
   };
 
   return (
     <div
       className={`fixed top-4 left-1/2 transform -translate-x-1/2 z-50 w-[90%] max-w-md transition-all duration-300 ${
-        isVisible ? "opacity-100 translate-y-0" : "opacity-0 -translate-y-4"
+        isVisible 
+          ? "opacity-100 translate-y-0 scale-100" 
+          : "opacity-0 -translate-y-4 scale-95"
       }`}
     >
-      <div className="bg-white rounded-xl shadow-2xl overflow-hidden border-2 border-pink-200">
-        {/* Progress Bar */}
-        <div className="h-1 bg-gray-200">
+      {/* Outer glow */}
+      <div className="absolute inset-0 bg-pink-400 blur-xl opacity-40 rounded-2xl"></div>
+      
+      {/* Main toast */}
+      <div className="relative bg-white rounded-2xl shadow-2xl overflow-hidden border border-gray-100">
+        {/* Animated progress bar */}
+        <div className="h-1.5 bg-gradient-to-r from-gray-200 via-gray-100 to-gray-200">
           <div
-            className="h-full bg-gradient-to-r from-pink-500 to-pink-600 transition-all duration-1000 ease-linear"
+            className="h-full bg-gradient-to-r from-pink-500 via-rose-500 to-pink-500 transition-all duration-1000 ease-linear shadow-sm"
             style={{ width: `${(timeLeft / 7) * 100}%` }}
           />
         </div>
 
+        {/* Content */}
         <div className="p-4">
-          {acceptingMessage ? (
-            // ✅ Accepting state
-            <div className="flex items-center gap-3 justify-center py-2">
-              <div className="w-12 h-12 rounded-full bg-green-500 flex items-center justify-center text-white">
-                <FaCheck size={24} />
-              </div>
-              <div>
-                <p className="text-lg font-semibold text-green-600">
-                  Connected! 🎉
-                </p>
-                <p className="text-sm text-gray-500">Opening chat...</p>
-              </div>
-            </div>
-          ) : (
-            // ✅ Normal state
-            <div className="flex items-center gap-3">
-            {/* Profile Image with Tier Border */}
-            <div
-              onClick={handleProfileClick}
-              className="relative cursor-pointer group"
-            >
-              <div
-                className={`w-14 h-14 rounded-full bg-gradient-to-br ${getTierColor(
-                  fromProfile.tier
-                )} p-[3px] group-hover:scale-105 transition-transform`}
-              >
-                <div
-                  className="w-full h-full rounded-full bg-cover bg-center bg-gray-200"
-                  style={{
-                    backgroundImage: `url(${
-                      fromProfile.imageUrl || "/placeholder.jpg"
-                    })`,
-                  }}
-                />
+          <div className="flex items-center gap-4">
+            {/* Profile Image with glow */}
+            <div className="relative flex-shrink-0">
+              {/* Pulsing glow ring */}
+              <div className="absolute inset-0 bg-pink-400 rounded-full blur-md animate-pulse opacity-40"></div>
+              
+              <div className="relative w-14 h-14 rounded-full bg-gradient-to-br from-gray-100 to-gray-200 overflow-hidden border-2 border-white shadow-lg">
+                {fromProfile.imageUrl ? (
+                  <img
+                    src={fromProfile.imageUrl}
+                    alt={fromProfile.name}
+                    className="w-full h-full object-cover"
+                  />
+                ) : (
+                  <div className="w-full h-full flex items-center justify-center text-3xl">
+                    {fromProfile.gender === "male" ? "👨" : "👩"}
+                  </div>
+                )}
               </div>
             </div>
 
-            {/* Text Content */}
+            {/* Text */}
             <div className="flex-1 min-w-0">
-              <p className="text-sm font-semibold text-gray-900 truncate">
-                <span
-                  onClick={handleProfileClick}
-                  className="hover:text-pink-600 cursor-pointer"
-                >
-                  {fromProfile.name}
-                </span>{" "}
-                wants to connect
+              <p className="text-base font-bold text-gray-800 truncate mb-0.5">
+                {fromProfile.name} wants to connect
               </p>
-              <p className="text-xs text-gray-500">
-                {fromProfile.age} • {fromProfile.gender} • {fromProfile.tier}
-              </p>
-              <p className="text-xs text-gray-400 mt-0.5">
-                Dismisses in {timeLeft}s
+              <p className="text-xs text-gray-500 font-medium">
+                {timeLeft}s to respond • Tap to accept or reject
               </p>
             </div>
 
-            {/* Action Buttons */}
-            <div className="flex gap-2">
+            {/* Action Buttons with hover effects */}
+            <div className="flex gap-2.5 flex-shrink-0">
+              {/* Reject Button */}
               <button
                 onClick={handleReject}
-                disabled={isProcessing}
-                className="w-10 h-10 rounded-full bg-red-500 hover:bg-red-600 text-white flex items-center justify-center transition-all hover:scale-110 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed shadow-lg"
+                className="relative w-11 h-11 bg-gradient-to-br from-red-500 to-red-600 hover:from-red-600 hover:to-red-700 rounded-full flex items-center justify-center transition-all duration-200 shadow-lg hover:shadow-xl hover:scale-110 active:scale-95 group"
                 title="Reject"
               >
-                <FaTimes size={16} />
+                {/* Glow effect on hover */}
+                <div className="absolute inset-0 bg-red-400 rounded-full blur-md opacity-0 group-hover:opacity-50 transition-opacity"></div>
+                <FiX className="relative text-white" size={22} strokeWidth={2.5} />
               </button>
+
+              {/* Accept Button */}
               <button
                 onClick={handleAccept}
-                disabled={isProcessing}
-                className="w-10 h-10 rounded-full bg-green-500 hover:bg-green-600 text-white flex items-center justify-center transition-all hover:scale-110 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed shadow-lg"
+                className="relative w-11 h-11 bg-gradient-to-br from-green-500 to-emerald-600 hover:from-green-600 hover:to-emerald-700 rounded-full flex items-center justify-center transition-all duration-200 shadow-lg hover:shadow-xl hover:scale-110 active:scale-95 group"
                 title="Accept"
               >
-                <FaCheck size={16} />
+                {/* Glow effect on hover */}
+                <div className="absolute inset-0 bg-green-400 rounded-full blur-md opacity-0 group-hover:opacity-50 transition-opacity"></div>
+                <FiCheck className="relative text-white" size={22} strokeWidth={2.5} />
               </button>
             </div>
           </div>
-          )}
         </div>
+
+        {/* Bottom gradient accent */}
+        <div className="h-px bg-gradient-to-r from-transparent via-gray-200 to-transparent"></div>
       </div>
     </div>
   );
 }
+

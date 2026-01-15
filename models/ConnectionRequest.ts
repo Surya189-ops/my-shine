@@ -1,15 +1,24 @@
+// models/ConnectionRequest.ts - Updated with "seen" field
+import mongoose, { Schema, Document, Model } from "mongoose";
 
-import mongoose, { Schema, models, model } from "mongoose";
+export interface IConnectionRequest extends Document {
+  fromProfileId: mongoose.Types.ObjectId;
+  toProfileId: mongoose.Types.ObjectId;
+  status: "pending" | "accepted" | "rejected";
+  seen: boolean; // NEW: Track if notification has been seen
+  createdAt: Date;
+  updatedAt: Date;
+}
 
-const ConnectionRequestSchema = new Schema(
+const ConnectionRequestSchema = new Schema<IConnectionRequest>(
   {
     fromProfileId: {
-      type: mongoose.Schema.Types.ObjectId,
+      type: Schema.Types.ObjectId,
       ref: "Profile",
       required: true,
     },
     toProfileId: {
-      type: mongoose.Schema.Types.ObjectId,
+      type: Schema.Types.ObjectId,
       ref: "Profile",
       required: true,
     },
@@ -18,16 +27,27 @@ const ConnectionRequestSchema = new Schema(
       enum: ["pending", "accepted", "rejected"],
       default: "pending",
     },
+    seen: {
+      type: Boolean,
+      default: false, // NEW: Default to false (unseen)
+    },
   },
-  { timestamps: true }
+  {
+    timestamps: true,
+  }
 );
 
-// Indexes
-ConnectionRequestSchema.index({ fromProfileId: 1, toProfileId: 1 });
-ConnectionRequestSchema.index({ status: 1 });
+// Compound index to prevent duplicate requests
+ConnectionRequestSchema.index(
+  { fromProfileId: 1, toProfileId: 1 },
+  { unique: true }
+);
 
-const ConnectionRequest =
-  models.ConnectionRequest ||
-  model("ConnectionRequest", ConnectionRequestSchema);
+// Index for faster queries
+ConnectionRequestSchema.index({ toProfileId: 1, status: 1, seen: 1 });
+
+const ConnectionRequest: Model<IConnectionRequest> =
+  mongoose.models.ConnectionRequest ||
+  mongoose.model<IConnectionRequest>("ConnectionRequest", ConnectionRequestSchema);
 
 export default ConnectionRequest;

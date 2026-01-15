@@ -1,4 +1,4 @@
-// pages/api/socket.ts - Updated with Payment Flow Events
+// pages/api/socket.ts - UPDATED with Unread Badge Events
 import { Server as NetServer } from "http";
 import { NextApiRequest } from "next";
 import { Server as ServerIO } from "socket.io";
@@ -49,6 +49,14 @@ export default async function handler(
       socket.on("send-message", (data: any) => {
         console.log("📨 Broadcasting message to room:", data.roomId);
         socket.to(data.roomId).emit("receive-message", data);
+
+        // ✅ NEW: Notify receiver about new unread message (for badge update)
+        const receiverRoom = `user:${data.receiverProfileId}`;
+        console.log("📬 Notifying receiver about new message:", receiverRoom);
+        io.to(receiverRoom).emit("new-message-notification", {
+          from: data.senderProfileId,
+          messageId: data._id,
+        });
       });
 
       /* -------- EDIT MESSAGE -------- */
@@ -115,9 +123,19 @@ export default async function handler(
           messageIds: data.messageIds,
           read: true,
         });
+
+        // ✅ NEW: Notify both users to update unread badge
+        // Extract profileIds from room (format: profileId1_profileId2)
+        const profileIds = data.roomId.split("_");
+        profileIds.forEach((profileId: string) => {
+          const userRoom = `user:${profileId}`;
+          io.to(userRoom).emit("messages-marked-read", {
+            messageIds: data.messageIds,
+          });
+        });
       });
 
-      /* -------- ✅ NEW: CONNECTION ACCEPTED (Payment Flow) -------- */
+      /* -------- CONNECTION ACCEPTED (Payment Flow) -------- */
       socket.on("connection-accepted", (data: {
         toProfileId: string;
         fromProfileId: string;
@@ -142,7 +160,7 @@ export default async function handler(
         });
       });
 
-      /* -------- ✅ NEW: PAYMENT DECLINED (Person A deleted payment notification) -------- */
+      /* -------- PAYMENT DECLINED -------- */
       socket.on("payment-declined", (data: {
         toProfileId: string;
         fromProfileId: string;

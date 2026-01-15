@@ -1,6 +1,7 @@
 "use client";
 
 import { usePathname, useRouter } from "next/navigation";
+import { useEffect, useState } from "react";
 import { AiFillHome } from "react-icons/ai";
 import { FiSearch, FiUser } from "react-icons/fi";
 import { IoNotificationsOutline } from "react-icons/io5";
@@ -8,11 +9,58 @@ import { IoNotificationsOutline } from "react-icons/io5";
 export default function BottomNav() {
   const pathname = usePathname();
   const router = useRouter();
+  const [profileId, setProfileId] = useState<string | null>(null);
+  const [hasUnread, setHasUnread] = useState(false);
+
+  useEffect(() => {
+    const userStr = localStorage.getItem("myshine_user");
+    if (userStr) {
+      const user = JSON.parse(userStr);
+      setProfileId(user.profileId);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!profileId) return;
+    
+    // Fetch unread count when component mounts or pathname changes
+    fetchUnreadCount();
+
+    // Listen for refresh events from toasts
+    const handleRefresh = () => {
+      fetchUnreadCount();
+    };
+
+    window.addEventListener("refreshNotificationBadge", handleRefresh);
+
+    return () => {
+      window.removeEventListener("refreshNotificationBadge", handleRefresh);
+    };
+  }, [profileId, pathname]);
+
+  const fetchUnreadCount = async () => {
+    if (!profileId) return;
+
+    try {
+      const res = await fetch(`/api/notifications/unread-count?profileId=${profileId}`);
+      const data = await res.json();
+
+      if (data.success) {
+        setHasUnread(data.unreadCount > 0);
+      }
+    } catch (error) {
+      console.error("Error fetching unread count:", error);
+    }
+  };
 
   const navItems = [
     { icon: <AiFillHome size={24} />, path: "/" },
     { icon: <FiSearch size={24} />, path: "/search" },
-    { icon: <IoNotificationsOutline size={24} />, path: "/notifications" },
+    { 
+      icon: <IoNotificationsOutline size={24} />, 
+      path: "/notifications",
+      showBadge: true 
+    },
     { icon: <FiUser size={24} />, path: "/profile" },
   ];
 
@@ -36,6 +84,7 @@ export default function BottomNav() {
                 key={index}
                 onClick={() => router.push(item.path)}
                 className={`
+                  relative
                   flex items-center justify-center
                   cursor-pointer transition-all duration-200
                   ${
@@ -46,6 +95,11 @@ export default function BottomNav() {
                 `}
               >
                 {item.icon}
+                
+                {/* Red Dot Badge for Notifications */}
+                {item.showBadge && hasUnread && pathname !== "/notifications" && (
+                  <span className="absolute -top-1 -right-1 w-2.5 h-2.5 bg-red-500 rounded-full animate-pulse shadow-lg shadow-red-500/50" />
+                )}
               </button>
             );
           })}

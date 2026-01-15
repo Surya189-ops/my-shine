@@ -1,4 +1,4 @@
-//app/api/notifications/payment/route.ts
+// FILE 2: app/api/notifications/payment/route.ts - UPDATED
 
 import { NextRequest, NextResponse } from "next/server";
 import dbConnect from "@/lib/mongodb";
@@ -20,6 +20,17 @@ export async function GET(req: NextRequest) {
 
     console.log("📥 Fetching payment notifications for:", profileId);
 
+    // First, delete expired payment notifications
+    const deleteResult = await PaymentNotification.deleteMany({
+      profileId,
+      status: "pending",
+      expiresAt: { $lte: new Date() },
+    });
+
+    if (deleteResult.deletedCount > 0) {
+      console.log(`🗑️ Auto-deleted ${deleteResult.deletedCount} expired payment notifications`);
+    }
+
     // Get all pending payment notifications that haven't expired
     const notifications = await PaymentNotification.find({
       profileId,
@@ -29,23 +40,7 @@ export async function GET(req: NextRequest) {
       .populate("fromProfileId", "name imageUrl tier")
       .sort({ createdAt: -1 });
 
-    console.log(`✅ Found ${notifications.length} payment notifications`);
-
-    // Automatically expire old notifications
-    const expiredResult = await PaymentNotification.updateMany(
-      {
-        profileId,
-        status: "pending",
-        expiresAt: { $lte: new Date() }, // Expired
-      },
-      {
-        $set: { status: "expired" },
-      }
-    );
-
-    if (expiredResult.modifiedCount > 0) {
-      console.log(`🧹 Expired ${expiredResult.modifiedCount} old notifications`);
-    }
+    console.log(`✅ Found ${notifications.length} active payment notifications`);
 
     return NextResponse.json({
       success: true,
@@ -60,7 +55,7 @@ export async function GET(req: NextRequest) {
   }
 }
 
-// DELETE a specific payment notification (when user clicks Pay)
+// DELETE a specific payment notification (when user clicks Pay or Dismiss)
 export async function DELETE(req: NextRequest) {
   try {
     await dbConnect();
@@ -77,10 +72,8 @@ export async function DELETE(req: NextRequest) {
 
     console.log("🗑️ Removing payment notification:", notificationId);
 
-    // Mark as completed instead of deleting
-    await PaymentNotification.findByIdAndUpdate(notificationId, {
-      status: "completed",
-    });
+    // Delete the notification
+    await PaymentNotification.findByIdAndDelete(notificationId);
 
     return NextResponse.json({
       success: true,

@@ -173,22 +173,44 @@ export default function HomePage() {
       })
       .catch(() => setLoading(false));
 
-    // Fetch unread message count
+    // Fetch unread conversation count (number of people, not messages)
     if (user.profileId) {
-      fetch(`/api/chats?profileId=${user.profileId}`)
+      fetch(`/api/messages/unread-conversations?profileId=${user.profileId}`)
         .then((res) => res.json())
         .then((data) => {
           if (data.success) {
-            const total = data.chats.reduce(
-              (sum: number, chat: any) => sum + chat.unreadCount,
-              0
-            );
-            setUnreadCount(total);
+            setUnreadCount(data.unreadConversationCount);
           }
         })
         .catch((err) => console.error("Failed to fetch unread count:", err));
     }
   }, [router, oppositeGender, viewerGender]);
+
+  // Listen for new messages and refresh badge
+  useEffect(() => {
+    const handleRefresh = () => {
+      const userStr = localStorage.getItem("myshine_user");
+      if (userStr) {
+        const user = JSON.parse(userStr);
+        if (user.profileId) {
+          fetch(`/api/messages/unread-conversations?profileId=${user.profileId}`)
+            .then((res) => res.json())
+            .then((data) => {
+              if (data.success) {
+                setUnreadCount(data.unreadConversationCount);
+              }
+            })
+            .catch((err) => console.error("Failed to refresh unread count:", err));
+        }
+      }
+    };
+
+    window.addEventListener("refreshMessageBadge", handleRefresh);
+
+    return () => {
+      window.removeEventListener("refreshMessageBadge", handleRefresh);
+    };
+  }, []);
 
   useEffect(() => {
     setSelectedPlan(plans[selectedTier][0]);
@@ -355,7 +377,7 @@ export default function HomePage() {
             >
               <IoChatbubbleEllipsesOutline size={26} className="text-gray-700" />
               {unreadCount > 0 && (
-                <div className="absolute -top-1 -right-1 w-5 h-5 bg-pink-500 text-white text-xs font-bold rounded-full flex items-center justify-center">
+                <div className="absolute -top-1 -right-1 min-w-[20px] h-5 bg-pink-500 text-white text-xs font-bold rounded-full flex items-center justify-center px-1">
                   {unreadCount > 9 ? "9+" : unreadCount}
                 </div>
               )}
