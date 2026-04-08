@@ -1,8 +1,8 @@
-// app/components/MessageContextMenu.tsx
+// app/components/MessageContextMenu.tsx - Updated with Translate
 "use client";
 
 import { useState, useEffect, useRef } from "react";
-import { FiEdit2, FiTrash2, FiCopy, FiX } from "react-icons/fi";
+import { FiEdit2, FiTrash2, FiCopy, FiX, FiGlobe } from "react-icons/fi";
 
 type MessageContextMenuProps = {
   messageId: string;
@@ -11,6 +11,7 @@ type MessageContextMenuProps = {
   messageCreatedAt: string;
   onEdit: (messageId: string, currentText: string) => void;
   onDelete: (messageId: string, deleteForEveryone: boolean) => void;
+  onTranslate: (messageId: string, messageText: string) => void;
   onClose: () => void;
   position: { x: number; y: number };
 };
@@ -22,6 +23,7 @@ export default function MessageContextMenu({
   messageCreatedAt,
   onEdit,
   onDelete,
+  onTranslate,
   onClose,
   position,
 }: MessageContextMenuProps) {
@@ -65,7 +67,7 @@ export default function MessageContextMenu({
   // Adjust menu position to stay within viewport
   const adjustedPosition = {
     x: Math.min(position.x, window.innerWidth - 200),
-    y: Math.min(position.y, window.innerHeight - 300),
+    y: Math.min(position.y, window.innerHeight - 400),
   };
 
   return (
@@ -93,6 +95,20 @@ export default function MessageContextMenu({
         <FiCopy size={16} className="text-gray-600" />
         <span>Copy</span>
       </button>
+
+      {/* Translate */}
+      {messageText && messageText.trim().length > 0 && (
+        <button
+          onClick={() => {
+            onTranslate(messageId, messageText);
+            onClose();
+          }}
+          className="w-full px-4 py-2 text-left text-sm hover:bg-gray-100 flex items-center gap-3"
+        >
+          <FiGlobe size={16} className="text-blue-600" />
+          <span>Translate</span>
+        </button>
+      )}
 
       {/* Edit (only for sender, within 15 min) */}
       {isMine && canEdit() && (

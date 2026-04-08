@@ -1,4 +1,4 @@
-// app/components/UnreadBadge.tsx - Badge positioned like Instagram (on top of icon)
+// app/components/UnreadBadge.tsx - COMPLETE with all event listeners
 "use client";
 
 import { useEffect, useState, useRef } from "react";
@@ -18,6 +18,20 @@ export default function UnreadBadge({ profileId, className = "" }: UnreadBadgePr
     if (!profileId) return;
 
     fetchUnreadCount();
+  }, [profileId]);
+
+  // ✅ Listen for manual refresh event from chat page
+  useEffect(() => {
+    const handleRefresh = () => {
+      console.log("🔄 Manual badge refresh event received - refetching count");
+      fetchUnreadCount();
+    };
+
+    window.addEventListener("refreshMessageBadge", handleRefresh);
+
+    return () => {
+      window.removeEventListener("refreshMessageBadge", handleRefresh);
+    };
   }, [profileId]);
 
   // Setup socket listener for real-time updates
@@ -40,15 +54,15 @@ export default function UnreadBadge({ profileId, className = "" }: UnreadBadgePr
         console.log("🔔 UnreadBadge connected to room:", userRoom);
       });
 
-      // Listen for new messages
-      socket.on("new-message-notification", () => {
-        console.log("📬 New message notification received");
+      // ✅ Listen for new messages (from socket server)
+      socket.on("new-message-notification", (data: any) => {
+        console.log("📬 New message notification received via socket:", data);
         fetchUnreadCount();
       });
 
-      // Listen for messages being read
-      socket.on("messages-marked-read", () => {
-        console.log("👁️ Messages marked as read");
+      // ✅ Listen for messages being read (from socket server)
+      socket.on("messages-marked-read", (data: any) => {
+        console.log("👁️ Messages marked as read via socket:", data);
         fetchUnreadCount();
       });
     };
@@ -66,6 +80,7 @@ export default function UnreadBadge({ profileId, className = "" }: UnreadBadgePr
       const data = await res.json();
 
       if (data.success) {
+        console.log("📊 Unread count updated:", data.unreadCount);
         setUnreadCount(data.unreadCount);
       }
     } catch (err) {

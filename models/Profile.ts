@@ -5,8 +5,7 @@ import mongoose, { Schema, models, model } from "mongoose";
 const ProfileSchema = new Schema(
   {
     userId: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: "User",
+      type: String,
       required: true,
       unique: true,
       index: true,

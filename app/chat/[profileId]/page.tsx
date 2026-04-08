@@ -1,4 +1,4 @@
-// app/chat/[profileId]/page.tsx - Updated with Image Support
+// app/chat/[profileId]/page.tsx - Updated with Badge Refresh Events
 "use client";
 
 import { useEffect, useState, useRef, useCallback } from "react";
@@ -360,6 +360,10 @@ export default function ChatPage() {
           messageIds: unreadIds,
         });
       }
+
+      // ✅ TRIGGER BADGE REFRESH EVENT
+      console.log("🔄 Triggering badge refresh - messages marked as read");
+      window.dispatchEvent(new Event("refreshMessageBadge"));
     } catch (err) {
       console.error("Mark read error:", err);
     }
