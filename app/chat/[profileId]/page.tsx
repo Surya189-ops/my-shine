@@ -1,9 +1,9 @@
-// app/chat/[profileId]/page.tsx - Updated with Badge Refresh Events
+// app/chat/[profileId]/page.tsx - Updated with Video Call
 "use client";
 
 import { useEffect, useState, useRef, useCallback } from "react";
 import { useParams, useRouter } from "next/navigation";
-import { FiArrowLeft, FiSend, FiCheck, FiSearch, FiImage, FiEye } from "react-icons/fi";
+import { FiArrowLeft, FiSend, FiCheck, FiSearch, FiImage, FiEye, FiVideo } from "react-icons/fi";
 import { io, Socket } from "socket.io-client";
 import TypingIndicator from "@/app/components/TypingIndicator";
 import ChatSearch from "@/app/components/ChatSearch";
@@ -11,6 +11,7 @@ import MessageContextMenu from "@/app/components/MessageContextMenu";
 import EditMessageModal from "@/app/components/EditMessageModal";
 import ImagePicker from "@/app/components/ImagePicker";
 import ImageViewer from "@/app/components/ImageViewer";
+import VideoCallModal from "@/app/components/VideoCallModal";
 
 type Message = {
   _id: string;
@@ -47,6 +48,13 @@ type ContextMenuState = {
   position: { x: number; y: number };
 } | null;
 
+type VideoCallState = {
+  isIncoming: boolean;
+  incomingOffer?: RTCSessionDescriptionInit;
+  fromName?: string;
+  fromImageUrl?: string;
+} | null;
+
 export default function ChatPage() {
   const router = useRouter();
   const params = useParams();
@@ -69,6 +77,7 @@ export default function ChatPage() {
     messageId?: string;
     isSender?: boolean;
   } | null>(null);
+  const [videoCall, setVideoCall] = useState<VideoCallState>(null);
 
   const socketRef = useRef<Socket | null>(null);
   const bottomRef = useRef<HTMLDivElement | null>(null);
@@ -191,55 +200,36 @@ export default function ChatPage() {
         });
       });
 
-      // Listen for message edits
       socket.off("message-edited").on("message-edited", (data: any) => {
         console.log("✏️ Message edited:", data);
-
         setMessages((prev) =>
           prev.map((m) =>
             m._id === data.messageId
-              ? {
-                ...m,
-                text: data.newText,
-                isEdited: true,
-                editedAt: data.editedAt,
-              }
+              ? { ...m, text: data.newText, isEdited: true, editedAt: data.editedAt }
               : m
           )
         );
       });
 
-      // Listen for message deletes
       socket.off("message-deleted").on("message-deleted", (data: any) => {
         console.log("🗑️ Message deleted:", data);
-
         if (data.deletedForEveryone) {
           setMessages((prev) =>
             prev.map((m) =>
               m._id === data.messageId
-                ? {
-                  ...m,
-                  isDeleted: true,
-                  deletedForEveryone: true,
-                }
+                ? { ...m, isDeleted: true, deletedForEveryone: true }
                 : m
             )
           );
         }
       });
 
-      // Listen for view-once viewed
       socket.off("view-once-viewed").on("view-once-viewed", (data: any) => {
         console.log("👁️ View-once image viewed:", data);
-
         setMessages((prev) =>
           prev.map((m) =>
             m._id === data.messageId
-              ? {
-                ...m,
-                viewedBy: [...(m.viewedBy || []), data.viewedBy],
-                viewedAt: data.viewedAt,
-              }
+              ? { ...m, viewedBy: [...(m.viewedBy || []), data.viewedBy], viewedAt: data.viewedAt }
               : m
           )
         );
@@ -250,16 +240,12 @@ export default function ChatPage() {
           setIsOtherTyping(data.isTyping);
 
           if (data.isTyping) {
-            if (otherTypingTimeoutRef.current) {
-              clearTimeout(otherTypingTimeoutRef.current);
-            }
+            if (otherTypingTimeoutRef.current) clearTimeout(otherTypingTimeoutRef.current);
             otherTypingTimeoutRef.current = setTimeout(() => {
               setIsOtherTyping(false);
             }, 3000);
           } else {
-            if (otherTypingTimeoutRef.current) {
-              clearTimeout(otherTypingTimeoutRef.current);
-            }
+            if (otherTypingTimeoutRef.current) clearTimeout(otherTypingTimeoutRef.current);
           }
         }
       });
@@ -267,9 +253,7 @@ export default function ChatPage() {
       socket.off("message-status-update").on("message-status-update", (data: any) => {
         setMessages((prev) =>
           prev.map((m) =>
-            m._id === data.messageId
-              ? { ...m, delivered: data.delivered }
-              : m
+            m._id === data.messageId ? { ...m, delivered: data.delivered } : m
           )
         );
       });
@@ -277,11 +261,20 @@ export default function ChatPage() {
       socket.off("messages-status-update").on("messages-status-update", (data: any) => {
         setMessages((prev) =>
           prev.map((m) =>
-            data.messageIds.includes(m._id)
-              ? { ...m, read: data.read }
-              : m
+            data.messageIds.includes(m._id) ? { ...m, read: data.read } : m
           )
         );
+      });
+
+      /* -------- INCOMING VIDEO CALL -------- */
+      socket.off("video-call-incoming").on("video-call-incoming", (data: any) => {
+        console.log("📹 Incoming video call from:", data.fromProfileId);
+        setVideoCall({
+          isIncoming: true,
+          incomingOffer: data.offer,
+          fromName: data.fromName,
+          fromImageUrl: data.fromImageUrl,
+        });
       });
     };
 
@@ -289,12 +282,8 @@ export default function ChatPage() {
 
     return () => {
       stopTyping();
-      if (typingTimeoutRef.current) {
-        clearTimeout(typingTimeoutRef.current);
-      }
-      if (otherTypingTimeoutRef.current) {
-        clearTimeout(otherTypingTimeoutRef.current);
-      }
+      if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
+      if (otherTypingTimeoutRef.current) clearTimeout(otherTypingTimeoutRef.current);
       socketRef.current?.disconnect();
       socketRef.current = null;
     };
@@ -328,12 +317,7 @@ export default function ChatPage() {
   /* -------- MARK MESSAGES AS READ -------- */
   const markMessagesAsRead = async (msgs: Message[]) => {
     const unreadIds = msgs
-      .filter(
-        (m) =>
-          m.receiverProfileId === myProfileId &&
-          !m.read &&
-          !m.isDeleted
-      )
+      .filter((m) => m.receiverProfileId === myProfileId && !m.read && !m.isDeleted)
       .map((m) => m._id);
 
     if (unreadIds.length === 0) return;
@@ -342,16 +326,11 @@ export default function ChatPage() {
       await fetch("/api/chat/mark-read", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          messageIds: unreadIds,
-          myProfileId,
-        }),
+        body: JSON.stringify({ messageIds: unreadIds, myProfileId }),
       });
 
       setMessages((prev) =>
-        prev.map((m) =>
-          unreadIds.includes(m._id) ? { ...m, read: true } : m
-        )
+        prev.map((m) => (unreadIds.includes(m._id) ? { ...m, read: true } : m))
       );
 
       if (socketRef.current) {
@@ -361,7 +340,6 @@ export default function ChatPage() {
         });
       }
 
-      // ✅ TRIGGER BADGE REFRESH EVENT
       console.log("🔄 Triggering badge refresh - messages marked as read");
       window.dispatchEvent(new Event("refreshMessageBadge"));
     } catch (err) {
@@ -401,8 +379,6 @@ export default function ChatPage() {
     message: Message
   ) => {
     e.preventDefault();
-
-    // Don't show menu for deleted messages or view-once images
     if (message.isDeleted || message.isViewOnce) return;
 
     const x = "touches" in e ? e.touches[0].clientX : e.clientX;
@@ -423,11 +399,7 @@ export default function ChatPage() {
       const res = await fetch("/api/chat/edit", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          messageId,
-          newText,
-          profileId: myProfileId,
-        }),
+        body: JSON.stringify({ messageId, newText, profileId: myProfileId }),
       });
 
       const data = await res.json();
@@ -436,12 +408,7 @@ export default function ChatPage() {
         setMessages((prev) =>
           prev.map((m) =>
             m._id === messageId
-              ? {
-                ...m,
-                text: newText,
-                isEdited: true,
-                editedAt: data.message.editedAt,
-              }
+              ? { ...m, text: newText, isEdited: true, editedAt: data.message.editedAt }
               : m
           )
         );
@@ -466,11 +433,7 @@ export default function ChatPage() {
       const res = await fetch("/api/chat/delete", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          messageId,
-          profileId: myProfileId,
-          deleteForEveryone,
-        }),
+        body: JSON.stringify({ messageId, profileId: myProfileId, deleteForEveryone }),
       });
 
       const data = await res.json();
@@ -479,13 +442,7 @@ export default function ChatPage() {
         if (deleteForEveryone) {
           setMessages((prev) =>
             prev.map((m) =>
-              m._id === messageId
-                ? {
-                  ...m,
-                  isDeleted: true,
-                  deletedForEveryone: true,
-                }
-                : m
+              m._id === messageId ? { ...m, isDeleted: true, deletedForEveryone: true } : m
             )
           );
 
@@ -565,25 +522,16 @@ export default function ChatPage() {
   };
 
   const handleImageView = async (message: Message) => {
-    // Check if it's a view-once image that hasn't been viewed
     const isSender = message.senderProfileId === myProfileId;
     const isReceiver = message.receiverProfileId === myProfileId;
     const hasViewed = message.viewedBy?.includes(myProfileId);
 
-    // Only mark as viewed if:
-    // 1. It's a view-once image
-    // 2. Current user is the RECEIVER (not sender)
-    // 3. Receiver hasn't viewed it yet
     if (message.isViewOnce && isReceiver && !hasViewed) {
-      // Mark as viewed
       try {
         const res = await fetch("/api/chat/mark-viewed", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            messageId: message._id,
-            profileId: myProfileId,
-          }),
+          body: JSON.stringify({ messageId: message._id, profileId: myProfileId }),
         });
 
         const data = await res.json();
@@ -601,7 +549,7 @@ export default function ChatPage() {
       caption: message.text,
       isViewOnce: message.isViewOnce,
       messageId: message._id,
-      isSender: isSender, // Track if viewer is sender
+      isSender,
     });
   };
 
@@ -612,13 +560,10 @@ export default function ChatPage() {
 
     setViewingImage(null);
 
-    // If it was a view-once image AND current user is RECEIVER (not sender), remove it
     if (isViewOnce && messageId && !isSender) {
       setMessages((prev) =>
         prev.map((m) =>
-          m._id === messageId
-            ? { ...m, imageUrl: null, text: "" }
-            : m
+          m._id === messageId ? { ...m, imageUrl: null, text: "" } : m
         )
       );
     }
@@ -714,10 +659,11 @@ export default function ChatPage() {
 
     return (
       <div
-        className={`px-4 py-2 rounded-2xl text-sm max-w-[70%] ${isMine
+        className={`px-4 py-2 rounded-2xl text-sm max-w-[70%] ${
+          isMine
             ? "bg-pink-100 text-gray-500 rounded-br-none"
             : "bg-gray-100 text-gray-500 shadow rounded-bl-none"
-          }`}
+        }`}
       >
         <div className="flex items-center gap-2 italic">
           <span className="text-xs">🚫</span>
@@ -739,7 +685,6 @@ export default function ChatPage() {
     const hasViewed = message.viewedBy?.includes(myProfileId);
     const hasImage = message.imageUrl && message.imageUrl.length > 0;
 
-    // Only show "expired" for RECEIVER who has viewed it
     if (!isMine && hasViewed && !hasImage) {
       return (
         <div className="px-4 py-3 rounded-2xl text-sm max-w-[70%] bg-gray-100 shadow rounded-bl-none">
@@ -751,7 +696,6 @@ export default function ChatPage() {
       );
     }
 
-    // Sender should never see expired message
     return null;
   };
 
@@ -760,17 +704,14 @@ export default function ChatPage() {
     const isMine = message.senderProfileId === myProfileId;
     const hasViewed = message.viewedBy?.includes(myProfileId);
 
-    // View-once image that's been viewed by receiver
     if (message.isViewOnce && !isMine && hasViewed) {
       return renderViewOnceMessage(message);
     }
 
-    // No image URL (shouldn't happen, but safety check)
     if (!message.imageUrl) {
       return renderViewOnceMessage(message);
     }
 
-    // Determine if image should be blurred
     const shouldBlur = message.isViewOnce && !hasViewed;
 
     return (
@@ -778,9 +719,11 @@ export default function ChatPage() {
         className={`max-w-[70%] ${isMine ? "ml-auto" : "mr-auto"}`}
         onClick={() => handleImageView(message)}
       >
-        <div className={`relative rounded-2xl overflow-hidden cursor-pointer ${isMine ? "rounded-br-none" : "rounded-bl-none"
-          }`}>
-          {/* Blurred Background Layer (for view-once) */}
+        <div
+          className={`relative rounded-2xl overflow-hidden cursor-pointer ${
+            isMine ? "rounded-br-none" : "rounded-bl-none"
+          }`}
+        >
           {shouldBlur && (
             <div className="absolute inset-0 z-0">
               <img
@@ -791,9 +734,7 @@ export default function ChatPage() {
             </div>
           )}
 
-          {/* Main Image Container */}
-          <div className={`relative ${shouldBlur ? 'z-10' : ''}`}>
-            {/* View Once Badge & Overlay */}
+          <div className={`relative ${shouldBlur ? "z-10" : ""}`}>
             {message.isViewOnce && (
               <div className="absolute inset-0 z-20 flex flex-col items-center justify-center bg-black bg-opacity-30">
                 <div className="bg-white text-gray-800 px-4 py-2 rounded-full font-semibold flex items-center gap-2 shadow-lg">
@@ -804,20 +745,20 @@ export default function ChatPage() {
               </div>
             )}
 
-            {/* Image */}
             <img
               src={message.imageUrl}
               alt="Shared image"
-              className={`max-w-full h-auto object-contain ${shouldBlur ? 'blur-2xl' : ''
-                }`}
+              className={`max-w-full h-auto object-contain ${shouldBlur ? "blur-2xl" : ""}`}
               style={{ maxHeight: "400px" }}
             />
           </div>
 
-          {/* Caption */}
           {message.text && (
-            <div className={`relative z-30 px-3 py-2 ${isMine ? "bg-pink-500 text-white" : "bg-white"
-              }`}>
+            <div
+              className={`relative z-30 px-3 py-2 ${
+                isMine ? "bg-pink-500 text-white" : "bg-white"
+              }`}
+            >
               <div className="flex items-end gap-1">
                 <span className="text-sm">{message.text}</span>
                 {isMine && <MessageTicks message={message} />}
@@ -825,7 +766,6 @@ export default function ChatPage() {
             </div>
           )}
 
-          {/* Ticks (if no caption and not view-once or sender's view-once) */}
           {!message.text && isMine && (
             <div className="absolute bottom-2 right-2 bg-black bg-opacity-50 rounded-full px-2 py-1 z-30">
               <MessageTicks message={message} />
@@ -860,7 +800,9 @@ export default function ChatPage() {
             )}
 
             <div className="min-w-0">
-              <p className="text-sm font-semibold truncate">{profile?.name || "Loading..."}</p>
+              <p className="text-sm font-semibold truncate">
+                {profile?.name || "Loading..."}
+              </p>
               <p className="text-xs text-gray-400">
                 {isOtherTyping ? "typing..." : "Online"}
               </p>
@@ -869,12 +811,23 @@ export default function ChatPage() {
         </div>
 
         <div className="flex items-center gap-2 flex-shrink-0">
+          {/* Video Call Button */}
+          <button
+            onClick={() => setVideoCall({ isIncoming: false })}
+            className="p-2 hover:bg-gray-100 rounded-full transition-colors"
+          >
+            <FiVideo size={20} className="text-gray-600" />
+          </button>
+
           {/* Search Button */}
           <button
             onClick={() => setIsSearchOpen(!isSearchOpen)}
             className="p-2 hover:bg-gray-100 rounded-full transition-colors"
           >
-            <FiSearch size={20} className={isSearchOpen ? "text-pink-500" : "text-gray-600"} />
+            <FiSearch
+              size={20}
+              className={isSearchOpen ? "text-pink-500" : "text-gray-600"}
+            />
           </button>
         </div>
       </div>
@@ -917,16 +870,21 @@ export default function ChatPage() {
                   renderImageMessage(msg)
                 ) : (
                   <div
-                    className={`px-4 py-2 rounded-2xl text-sm max-w-[70%] ${isMine
+                    className={`px-4 py-2 rounded-2xl text-sm max-w-[70%] ${
+                      isMine
                         ? "bg-pink-500 text-white rounded-br-none"
                         : "bg-white shadow rounded-bl-none"
-                      }`}
+                    }`}
                   >
                     <div className="flex items-end gap-1">
                       <div className="flex flex-col">
                         <span>{msg.text}</span>
                         {msg.isEdited && (
-                          <span className={`text-xs mt-1 ${isMine ? "text-pink-200" : "text-gray-400"}`}>
+                          <span
+                            className={`text-xs mt-1 ${
+                              isMine ? "text-pink-200" : "text-gray-400"
+                            }`}
+                          >
                             edited
                           </span>
                         )}
@@ -940,7 +898,6 @@ export default function ChatPage() {
           })
         )}
 
-        {/* TYPING INDICATOR */}
         {isOtherTyping && (
           <div className="flex justify-start">
             <TypingIndicator />
@@ -952,7 +909,6 @@ export default function ChatPage() {
 
       {/* INPUT */}
       <div className="flex items-center gap-2 px-3 py-3 bg-white border-t">
-        {/* Image Button */}
         <button
           onClick={() => setShowImagePicker(true)}
           className="p-2 text-gray-600 hover:text-pink-500 hover:bg-pink-50 rounded-full transition-colors"
@@ -1027,6 +983,20 @@ export default function ChatPage() {
           isViewOnce={viewingImage.isViewOnce}
           isSender={viewingImage.isSender}
           onClose={handleCloseImageViewer}
+        />
+      )}
+
+      {/* VIDEO CALL MODAL */}
+      {videoCall && profile && socketRef.current && (
+        <VideoCallModal
+          socket={socketRef.current}
+          myProfileId={myProfileId}
+          otherProfileId={otherProfileId}
+          otherName={profile.name}
+          otherImageUrl={profile.imageUrl}
+          isIncoming={videoCall.isIncoming}
+          incomingOffer={videoCall.incomingOffer}
+          onClose={() => setVideoCall(null)}
         />
       )}
     </div>

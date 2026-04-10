@@ -1,4 +1,4 @@
-// pages/api/socket.ts - UPDATED with Unread Badge Events
+// pages/api/socket.ts - UPDATED with Video Call Signaling
 import { Server as NetServer } from "http";
 import { NextApiRequest } from "next";
 import { Server as ServerIO } from "socket.io";
@@ -27,7 +27,6 @@ export default async function handler(
       },
     });
 
-    // Store globally for API route access
     global.io = io;
 
     io.on("connection", (socket) => {
@@ -50,7 +49,6 @@ export default async function handler(
         console.log("📨 Broadcasting message to room:", data.roomId);
         socket.to(data.roomId).emit("receive-message", data);
 
-        // ✅ NEW: Notify receiver about new unread message (for badge update)
         const receiverRoom = `user:${data.receiverProfileId}`;
         console.log("📬 Notifying receiver about new message:", receiverRoom);
         io.to(receiverRoom).emit("new-message-notification", {
@@ -124,8 +122,6 @@ export default async function handler(
           read: true,
         });
 
-        // ✅ NEW: Notify both users to update unread badge
-        // Extract profileIds from room (format: profileId1_profileId2)
         const profileIds = data.roomId.split("_");
         profileIds.forEach((profileId: string) => {
           const userRoom = `user:${profileId}`;
@@ -145,11 +141,8 @@ export default async function handler(
         requestId: string;
       }) => {
         console.log("💰 Connection accepted - Notifying sender for payment:", data);
-        
         const toRoom = `user:${data.toProfileId}`;
-        
         console.log(`📤 Emitting connection-accepted-notify to room: ${toRoom}`);
-        
         io.to(toRoom).emit("connection-accepted-notify", {
           fromProfileId: data.fromProfileId,
           fromName: data.fromName,
@@ -167,16 +160,50 @@ export default async function handler(
         requestId: string;
       }) => {
         console.log("❌ Payment declined - Notifying acceptor:", data);
-        
         const toRoom = `user:${data.toProfileId}`;
-        
         console.log(`📤 Emitting payment-declined-notify to room: ${toRoom}`);
-        
         io.to(toRoom).emit("payment-declined-notify", {
           fromProfileId: data.fromProfileId,
           requestId: data.requestId,
           timestamp: new Date().toISOString(),
         });
+      });
+
+      /* -------- VIDEO CALL SIGNALING -------- */
+      socket.on("video-call-offer", (data: {
+        toProfileId: string;
+        fromProfileId: string;
+        fromName: string;
+        fromImageUrl?: string;
+        offer: RTCSessionDescriptionInit;
+      }) => {
+        console.log("📹 Video call offer from:", data.fromProfileId);
+        io.to(`user:${data.toProfileId}`).emit("video-call-incoming", data);
+      });
+
+      socket.on("video-call-answer", (data: {
+        toProfileId: string;
+        answer: RTCSessionDescriptionInit;
+      }) => {
+        console.log("📹 Video call answered");
+        io.to(`user:${data.toProfileId}`).emit("video-call-answered", data);
+      });
+
+      socket.on("video-call-ice-candidate", (data: {
+        toProfileId: string;
+        candidate: RTCIceCandidateInit;
+      }) => {
+        io.to(`user:${data.toProfileId}`).emit("video-call-ice-candidate", data);
+      });
+
+      socket.on("video-call-reject", (data: { toProfileId: string }) => {
+        console.log("📹 Video call rejected");
+        io.to(`user:${data.toProfileId}`).emit("video-call-rejected");
+      });
+
+      socket.on("video-call-end", (data: { toProfileId: string }) => {
+        console.log("📹 Video call ended");
+        io.to(`user:${data.toProfileId}`).emit("video-call-ended");
       });
 
       /* -------- DISCONNECT -------- */

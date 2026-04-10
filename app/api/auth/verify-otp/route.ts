@@ -1,63 +1,101 @@
-// app/api/auth/verify-otp/route.ts
 import { NextResponse } from "next/server";
+import bcrypt from "bcryptjs";
+import connectDB from "@/lib/mongodb";
+import User from "@/models/User";
 
-// Same OTP store as send-otp
 const otpStore = new Map<string, { otp: string; expiresAt: number }>();
 
 export async function POST(req: Request) {
   try {
-    const { phone, otp } = await req.json();
+    const { email, otp, password, isLogin } = await req.json();
 
-    if (!phone || !otp) {
+    if (!email || !otp) {
       return NextResponse.json(
-        { success: false, message: "Phone and OTP are required" },
+        { success: false, message: "Email and OTP are required" },
         { status: 400 }
       );
     }
 
-    console.log("🔐 Verifying OTP for:", phone);
+    const storedData = otpStore.get(email);
 
-    // For testing: always accept "123456"
-    const isTestOTP = otp === "123456";
-
-    const storedData = otpStore.get(phone);
-
-    if (!storedData && !isTestOTP) {
+    if (!storedData) {
       return NextResponse.json(
-        { success: false, message: "OTP not found or expired" },
+        { success: false, message: "OTP not found or expired. Please request a new one." },
         { status: 400 }
       );
     }
 
-    if (storedData && Date.now() > storedData.expiresAt) {
-      otpStore.delete(phone);
+    if (Date.now() > storedData.expiresAt) {
+      otpStore.delete(email);
       return NextResponse.json(
-        { success: false, message: "OTP has expired" },
+        { success: false, message: "OTP has expired. Please request a new one." },
         { status: 400 }
       );
     }
 
-    if (!isTestOTP && storedData?.otp !== otp) {
+    if (storedData.otp !== otp) {
       return NextResponse.json(
-        { success: false, message: "Invalid OTP" },
+        { success: false, message: "Invalid OTP. Please try again." },
         { status: 400 }
       );
     }
 
-    // Clear OTP
-    otpStore.delete(phone);
+    otpStore.delete(email);
 
-    // Return a fake user object for testing
-    const fakeUserId = Buffer.from(phone).toString("base64").slice(0, 24);
+    await connectDB();
 
-    console.log("✅ OTP verified for:", phone);
+    let user = await User.findOne({ email });
+
+    if (isLogin) {
+      if (!user) {
+        return NextResponse.json(
+          { success: false, message: "No account found with this email. Please sign up." },
+          { status: 404 }
+        );
+      }
+
+      user.isVerified = true;
+      await user.save();
+    } else {
+      if (!password) {
+        return NextResponse.json(
+          { success: false, message: "Password is required for signup" },
+          { status: 400 }
+        );
+      }
+
+      if (user) {
+        if (user.isVerified) {
+          return NextResponse.json(
+            { success: false, message: "Account already exists. Please login." },
+            { status: 400 }
+          );
+        }
+        const hashedPassword = await bcrypt.hash(password, 12);
+        user.password = hashedPassword;
+        user.isVerified = true;
+        await user.save();
+      } else {
+        const hashedPassword = await bcrypt.hash(password, 12);
+        user = await User.create({
+          email,
+          password: hashedPassword,
+          isVerified: true,
+          authProvider: "email",
+        });
+      }
+    }
+
+    console.log(`✅ OTP verified for: ${email}`);
 
     return NextResponse.json({
       success: true,
-      message: "OTP verified successfully",
+      message: "Verified successfully",
       user: {
-        id: fakeUserId,
-        phone: phone,
+        id: user._id.toString(),
+        email: user.email,
+        name: user.name || "",
+        provider: user.authProvider,
       },
     });
   } catch (error: any) {

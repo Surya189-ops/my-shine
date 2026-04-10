@@ -3,6 +3,7 @@ import "./globals.css";
 import SocketInitializer from "./components/SocketInitializer";
 import NotificationWrapper from "./components/NotificationWrapper";
 import ProfileIdFixer from "./components/ProfileIdFixer";
+import SessionProviderWrapper from "./components/SessionProviderWrapper";
 
 export const metadata = {
   title: "My Shine",
@@ -28,17 +29,19 @@ export default function RootLayout({
       </head>
 
       <body className="bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 transition-colors duration-300">
-        {/* 🚀 INITIALIZE SOCKET SERVER FIRST */}
-        <SocketInitializer />
+        <SessionProviderWrapper>
+          {/* 🚀 INITIALIZE SOCKET SERVER FIRST */}
+          <SocketInitializer />
 
-        {/* 🔧 FIX MISSING PROFILEID FOR EXISTING USERS */}
-        <ProfileIdFixer />
+          {/* 🔧 FIX MISSING PROFILEID FOR EXISTING USERS */}
+          <ProfileIdFixer />
 
-        {/* 🔔 GLOBAL CONNECTION NOTIFICATIONS */}
-        <NotificationWrapper />
+          {/* 🔔 GLOBAL CONNECTION NOTIFICATIONS */}
+          <NotificationWrapper />
 
-        {/* APP CONTENT */}
-        {children}
+          {/* APP CONTENT */}
+          {children}
+        </SessionProviderWrapper>
       </body>
     </html>
   );
