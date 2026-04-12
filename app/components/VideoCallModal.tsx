@@ -3,13 +3,10 @@
 import { useEffect, useRef, useState } from "react";
 import { Socket } from "socket.io-client";
 import {
-  FiMic,
-  FiMicOff,
-  FiVideo,
-  FiVideoOff,
-  FiPhoneOff,
-  FiPhone,
+  FiMic, FiMicOff, FiVideo, FiVideoOff,
+  FiPhoneOff, FiPhone, FiPlus,
 } from "react-icons/fi";
+import VideoCallPaymentModal from "./VideoCallPaymentModal";
 
 type Props = {
   socket: Socket;
@@ -21,6 +18,9 @@ type Props = {
   incomingOffer?: RTCSessionDescriptionInit;
   onClose: () => void;
 };
+
+const INITIAL_SECONDS = 10 * 60; // 10 minutes
+const EXTEND_SECONDS = 5 * 60;   // 5 minutes
 
 export default function VideoCallModal({
   socket,
@@ -36,18 +36,29 @@ export default function VideoCallModal({
   const remoteVideoRef = useRef<HTMLVideoElement>(null);
   const pcRef = useRef<RTCPeerConnection | null>(null);
   const localStreamRef = useRef<MediaStream | null>(null);
+  const countdownRef = useRef<NodeJS.Timeout | null>(null);
 
-  type CallState = "ringing" | "connecting" | "active" | "ended";
-  const [callState, setCallState] = useState<CallState>(isIncoming ? "ringing" : "connecting");
+  type CallState = "payment" | "ringing" | "connecting" | "active" | "ended";
+  const [callState, setCallState] = useState<CallState>(
+    isIncoming ? "ringing" : "payment"
+  );
   const [isMuted, setIsMuted] = useState(false);
   const [isCameraOff, setIsCameraOff] = useState(false);
-  const [callDuration, setCallDuration] = useState(0);
-  const timerRef = useRef<NodeJS.Timeout | null>(null);
+  const [timeLeft, setTimeLeft] = useState(INITIAL_SECONDS);
+  const [showExtendPayment, setShowExtendPayment] = useState(false);
+  const [showExtendWarning, setShowExtendWarning] = useState(false);
 
   const iceServers = [
     { urls: "stun:stun.l.google.com:19302" },
     { urls: "stun:stun1.l.google.com:19302" },
   ];
+
+  /* -------- FORMAT TIME -------- */
+  const formatTime = (s: number) => {
+    const m = Math.floor(s / 60).toString().padStart(2, "0");
+    const sec = (s % 60).toString().padStart(2, "0");
+    return `${m}:${sec}`;
+  };
 
   /* -------- CLEANUP -------- */
   const cleanup = () => {
@@ -55,20 +66,25 @@ export default function VideoCallModal({
     pcRef.current = null;
     localStreamRef.current?.getTracks().forEach((t) => t.stop());
     localStreamRef.current = null;
-    if (timerRef.current) clearInterval(timerRef.current);
+    if (countdownRef.current) clearInterval(countdownRef.current);
   };
 
-  /* -------- START TIMER -------- */
-  const startTimer = () => {
-    timerRef.current = setInterval(() => {
-      setCallDuration((d) => d + 1);
+  /* -------- START COUNTDOWN -------- */
+  const startCountdown = (initialTime: number) => {
+    if (countdownRef.current) clearInterval(countdownRef.current);
+    setTimeLeft(initialTime);
+
+    countdownRef.current = setInterval(() => {
+      setTimeLeft((prev) => {
+        if (prev <= 60 && prev > 59) setShowExtendWarning(true);
+        if (prev <= 1) {
+          clearInterval(countdownRef.current!);
+          endCall();
+          return 0;
+        }
+        return prev - 1;
+      });
     }, 1000);
-  };
-
-  const formatDuration = (s: number) => {
-    const m = Math.floor(s / 60).toString().padStart(2, "0");
-    const sec = (s % 60).toString().padStart(2, "0");
-    return `${m}:${sec}`;
   };
 
   /* -------- CREATE PEER CONNECTION -------- */
@@ -96,12 +112,9 @@ export default function VideoCallModal({
     pc.onconnectionstatechange = () => {
       if (pc.connectionState === "connected") {
         setCallState("active");
-        startTimer();
+        startCountdown(INITIAL_SECONDS);
       }
-      if (
-        pc.connectionState === "disconnected" ||
-        pc.connectionState === "failed"
-      ) {
+      if (pc.connectionState === "disconnected" || pc.connectionState === "failed") {
         endCall();
       }
     };
@@ -109,44 +122,36 @@ export default function VideoCallModal({
     return pc;
   };
 
-  /* -------- INIT OUTGOING CALL -------- */
-  useEffect(() => {
-    if (isIncoming) return;
+  /* -------- INIT OUTGOING CALL (after payment) -------- */
+  const startCallAfterPayment = async () => {
+    try {
+      setCallState("connecting");
+      const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+      localStreamRef.current = stream;
+      if (localVideoRef.current) localVideoRef.current.srcObject = stream;
 
-    (async () => {
-      try {
-        const stream = await navigator.mediaDevices.getUserMedia({
-          video: true,
-          audio: true,
-        });
-        localStreamRef.current = stream;
-        if (localVideoRef.current) localVideoRef.current.srcObject = stream;
+      const pc = createPC(stream);
+      const offer = await pc.createOffer();
+      await pc.setLocalDescription(offer);
 
-        const pc = createPC(stream);
-        const offer = await pc.createOffer();
-        await pc.setLocalDescription(offer);
-
-        socket.emit("video-call-offer", {
-          toProfileId: otherProfileId,
-          fromProfileId: myProfileId,
-          fromName: otherName,
-          offer,
-        });
-      } catch (err) {
-        console.error("Camera/mic error:", err);
-        alert("Could not access camera or microphone.");
-        onClose();
-      }
-    })();
-  }, []);
+      socket.emit("video-call-offer", {
+        toProfileId: otherProfileId,
+        fromProfileId: myProfileId,
+        fromName: otherName,
+        offer,
+      });
+    } catch (err) {
+      console.error("Camera/mic error:", err);
+      alert("Could not access camera or microphone.");
+      onClose();
+    }
+  };
 
   /* -------- HANDLE INCOMING SOCKET EVENTS -------- */
   useEffect(() => {
     socket.on("video-call-answered", async ({ answer }: { answer: RTCSessionDescriptionInit }) => {
       if (pcRef.current) {
-        await pcRef.current.setRemoteDescription(
-          new RTCSessionDescription(answer)
-        );
+        await pcRef.current.setRemoteDescription(new RTCSessionDescription(answer));
       }
     });
 
@@ -184,25 +189,16 @@ export default function VideoCallModal({
   const acceptCall = async () => {
     try {
       setCallState("connecting");
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video: true,
-        audio: true,
-      });
+      const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
       localStreamRef.current = stream;
       if (localVideoRef.current) localVideoRef.current.srcObject = stream;
 
       const pc = createPC(stream);
-
-      await pc.setRemoteDescription(
-        new RTCSessionDescription(incomingOffer!)
-      );
+      await pc.setRemoteDescription(new RTCSessionDescription(incomingOffer!));
       const answer = await pc.createAnswer();
       await pc.setLocalDescription(answer);
 
-      socket.emit("video-call-answer", {
-        toProfileId: otherProfileId,
-        answer,
-      });
+      socket.emit("video-call-answer", { toProfileId: otherProfileId, answer });
     } catch (err) {
       console.error("Accept call error:", err);
       alert("Could not access camera or microphone.");
@@ -222,50 +218,79 @@ export default function VideoCallModal({
     socket.emit("video-call-end", { toProfileId: otherProfileId });
     setCallState("ended");
     cleanup();
-    setTimeout(onClose, 1000);
+    setTimeout(onClose, 1500);
+  };
+
+  /* -------- EXTEND CALL (after ₹99 payment) -------- */
+  const handleExtendPaid = () => {
+    setShowExtendPayment(false);
+    setShowExtendWarning(false);
+    setTimeLeft((prev) => {
+      const newTime = prev + EXTEND_SECONDS;
+      // Restart countdown with new time
+      if (countdownRef.current) clearInterval(countdownRef.current);
+      countdownRef.current = setInterval(() => {
+        setTimeLeft((t) => {
+          if (t <= 60 && t > 59) setShowExtendWarning(true);
+          if (t <= 1) {
+            clearInterval(countdownRef.current!);
+            endCall();
+            return 0;
+          }
+          return t - 1;
+        });
+      }, 1000);
+      return newTime;
+    });
   };
 
   /* -------- TOGGLE MIC -------- */
   const toggleMute = () => {
     if (!localStreamRef.current) return;
-    localStreamRef.current.getAudioTracks().forEach((t) => {
-      t.enabled = !t.enabled;
-    });
+    localStreamRef.current.getAudioTracks().forEach((t) => { t.enabled = !t.enabled; });
     setIsMuted((m) => !m);
   };
 
   /* -------- TOGGLE CAMERA -------- */
   const toggleCamera = () => {
     if (!localStreamRef.current) return;
-    localStreamRef.current.getVideoTracks().forEach((t) => {
-      t.enabled = !t.enabled;
-    });
+    localStreamRef.current.getVideoTracks().forEach((t) => { t.enabled = !t.enabled; });
     setIsCameraOff((c) => !c);
   };
 
   /* -------- CLEANUP ON UNMOUNT -------- */
   useEffect(() => () => cleanup(), []);
 
+  /* -------- TIMER COLOR -------- */
+  const timerColor = timeLeft <= 60 ? "text-red-400" : timeLeft <= 180 ? "text-yellow-300" : "text-white/70";
+
   return (
     <div className="fixed inset-0 z-50 bg-gray-900 flex flex-col">
-      {/* Remote video — full screen background */}
+
+      {/* PAYMENT SCREEN — shown before call starts */}
+      {callState === "payment" && (
+        <VideoCallPaymentModal
+          otherName={otherName}
+          otherImageUrl={otherImageUrl}
+          type="initial"
+          onPay={startCallAfterPayment}
+          onCancel={onClose}
+        />
+      )}
+
+      {/* REMOTE VIDEO */}
       <video
         ref={remoteVideoRef}
         autoPlay
         playsInline
-        className={`absolute inset-0 w-full h-full object-cover ${callState !== "active" ? "hidden" : ""
-          }`}
+        className={`absolute inset-0 w-full h-full object-cover ${callState !== "active" ? "hidden" : ""}`}
       />
 
-      {/* Ringing / connecting state — show avatar */}
+      {/* RINGING / CONNECTING */}
       {(callState === "ringing" || callState === "connecting") && (
         <div className="flex-1 flex flex-col items-center justify-center gap-5">
           {otherImageUrl ? (
-            <img
-              src={otherImageUrl}
-              className="w-28 h-28 rounded-full object-cover border-4 border-white/20"
-              alt={otherName}
-            />
+            <img src={otherImageUrl} className="w-28 h-28 rounded-full object-cover border-4 border-white/20" alt={otherName} />
           ) : (
             <div className="w-28 h-28 rounded-full bg-gray-600 flex items-center justify-center text-white text-4xl font-semibold">
               {otherName[0]?.toUpperCase()}
@@ -278,23 +303,43 @@ export default function VideoCallModal({
         </div>
       )}
 
-      {/* Ended state */}
+      {/* ENDED */}
       {callState === "ended" && (
         <div className="flex-1 flex flex-col items-center justify-center gap-3">
           <p className="text-white text-xl font-semibold">Call ended</p>
-          <p className="text-gray-400 text-sm">{formatDuration(callDuration)}</p>
+          <p className="text-gray-400 text-sm">{formatTime(INITIAL_SECONDS - timeLeft)} duration</p>
         </div>
       )}
 
-      {/* Active call — name overlay at top */}
+      {/* ACTIVE CALL — TOP BAR */}
       {callState === "active" && (
-        <div className="absolute top-0 left-0 right-0 flex items-center justify-between px-4 pt-10 pb-4 bg-gradient-to-b from-black/50 to-transparent z-10">
+        <div className="absolute top-0 left-0 right-0 flex items-center justify-between px-4 pt-10 pb-4 bg-gradient-to-b from-black/60 to-transparent z-10">
           <p className="text-white font-semibold text-lg">{otherName}</p>
-          <p className="text-white/70 text-sm">{formatDuration(callDuration)}</p>
+
+          {/* TIMER */}
+          <div className={`flex items-center gap-1.5 ${timerColor}`}>
+            <span className="text-sm font-mono font-bold">{formatTime(timeLeft)}</span>
+          </div>
         </div>
       )}
 
-      {/* Local video — picture in picture */}
+      {/* 1 MINUTE WARNING BANNER */}
+      {callState === "active" && showExtendWarning && !showExtendPayment && (
+        <div className="absolute top-24 left-4 right-4 z-20 bg-red-500/90 backdrop-blur-sm rounded-2xl px-4 py-3 flex items-center justify-between">
+          <div>
+            <p className="text-white font-semibold text-sm">⏰ Less than 1 minute left!</p>
+            <p className="text-white/80 text-xs">Extend your call for ₹99</p>
+          </div>
+          <button
+            onClick={() => setShowExtendPayment(true)}
+            className="bg-white text-red-500 font-bold text-xs px-3 py-1.5 rounded-full"
+          >
+            +5 mins
+          </button>
+        </div>
+      )}
+
+      {/* LOCAL VIDEO PIP */}
       <div className="absolute bottom-28 right-4 z-20 rounded-2xl overflow-hidden border-2 border-white/20 shadow-lg w-28 h-40">
         <video
           ref={localVideoRef}
@@ -310,72 +355,93 @@ export default function VideoCallModal({
         )}
       </div>
 
-      {/* Controls */}
-      <div className="absolute bottom-0 left-0 right-0 pb-10 pt-6 bg-gradient-to-t from-black/60 to-transparent z-20">
-        <div className="flex items-center justify-center gap-6">
+      {/* CONTROLS */}
+      {callState !== "payment" && (
+        <div className="absolute bottom-0 left-0 right-0 pb-10 pt-6 bg-gradient-to-t from-black/60 to-transparent z-20">
+          <div className="flex items-center justify-center gap-5">
 
-          {/* Incoming call — reject + accept */}
-          {callState === "ringing" && (
-            <>
-              <div className="flex flex-col items-center gap-2">
-                <button
-                  onClick={rejectCall}
-                  className="w-16 h-16 rounded-full bg-red-500 flex items-center justify-center text-white shadow-lg active:scale-95 transition-transform"
-                >
-                  <FiPhoneOff size={26} />
-                </button>
-                <span className="text-white/70 text-xs">Decline</span>
-              </div>
-              <div className="flex flex-col items-center gap-2">
-                <button
-                  onClick={acceptCall}
-                  className="w-16 h-16 rounded-full bg-green-500 flex items-center justify-center text-white shadow-lg active:scale-95 transition-transform"
-                >
-                  <FiPhone size={26} />
-                </button>
-                <span className="text-white/70 text-xs">Accept</span>
-              </div>
-            </>
-          )}
+            {/* RINGING */}
+            {callState === "ringing" && (
+              <>
+                <div className="flex flex-col items-center gap-2">
+                  <button onClick={rejectCall} className="w-16 h-16 rounded-full bg-red-500 flex items-center justify-center text-white shadow-lg active:scale-95 transition-transform">
+                    <FiPhoneOff size={26} />
+                  </button>
+                  <span className="text-white/70 text-xs">Decline</span>
+                </div>
+                <div className="flex flex-col items-center gap-2">
+                  <button onClick={acceptCall} className="w-16 h-16 rounded-full bg-green-500 flex items-center justify-center text-white shadow-lg active:scale-95 transition-transform">
+                    <FiPhone size={26} />
+                  </button>
+                  <span className="text-white/70 text-xs">Accept</span>
+                </div>
+              </>
+            )}
 
-          {/* Active / connecting — mute + end + camera */}
-          {(callState === "active" || callState === "connecting") && (
-            <>
-              <div className="flex flex-col items-center gap-2">
-                <button
-                  onClick={toggleMute}
-                  className={`w-14 h-14 rounded-full flex items-center justify-center text-white shadow-lg active:scale-95 transition-transform ${isMuted ? "bg-white/30" : "bg-white/10 border border-white/20"
-                    }`}
-                >
-                  {isMuted ? <FiMicOff size={22} /> : <FiMic size={22} />}
-                </button>
-                <span className="text-white/70 text-xs">{isMuted ? "Unmute" : "Mute"}</span>
-              </div>
+            {/* ACTIVE / CONNECTING */}
+            {(callState === "active" || callState === "connecting") && (
+              <>
+                {/* MUTE */}
+                <div className="flex flex-col items-center gap-2">
+                  <button
+                    onClick={toggleMute}
+                    className={`w-14 h-14 rounded-full flex items-center justify-center text-white shadow-lg active:scale-95 transition-transform ${isMuted ? "bg-white/30" : "bg-white/10 border border-white/20"}`}
+                  >
+                    {isMuted ? <FiMicOff size={22} /> : <FiMic size={22} />}
+                  </button>
+                  <span className="text-white/70 text-xs">{isMuted ? "Unmute" : "Mute"}</span>
+                </div>
 
-              <div className="flex flex-col items-center gap-2">
-                <button
-                  onClick={endCall}
-                  className="w-16 h-16 rounded-full bg-red-500 flex items-center justify-center text-white shadow-lg active:scale-95 transition-transform"
-                >
-                  <FiPhoneOff size={26} />
-                </button>
-                <span className="text-white/70 text-xs">End</span>
-              </div>
+                {/* END */}
+                <div className="flex flex-col items-center gap-2">
+                  <button onClick={endCall} className="w-16 h-16 rounded-full bg-red-500 flex items-center justify-center text-white shadow-lg active:scale-95 transition-transform">
+                    <FiPhoneOff size={26} />
+                  </button>
+                  <span className="text-white/70 text-xs">End</span>
+                </div>
 
-              <div className="flex flex-col items-center gap-2">
-                <button
-                  onClick={toggleCamera}
-                  className={`w-14 h-14 rounded-full flex items-center justify-center text-white shadow-lg active:scale-95 transition-transform ${isCameraOff ? "bg-white/30" : "bg-white/10 border border-white/20"
-                    }`}
-                >
-                  {isCameraOff ? <FiVideoOff size={22} /> : <FiVideo size={22} />}
-                </button>
-                <span className="text-white/70 text-xs">{isCameraOff ? "Camera on" : "Camera off"}</span>
-              </div>
-            </>
-          )}
+                {/* CAMERA */}
+                <div className="flex flex-col items-center gap-2">
+                  <button
+                    onClick={toggleCamera}
+                    className={`w-14 h-14 rounded-full flex items-center justify-center text-white shadow-lg active:scale-95 transition-transform ${isCameraOff ? "bg-white/30" : "bg-white/10 border border-white/20"}`}
+                  >
+                    {isCameraOff ? <FiVideoOff size={22} /> : <FiVideo size={22} />}
+                  </button>
+                  <span className="text-white/70 text-xs">{isCameraOff ? "Camera on" : "Camera off"}</span>
+                </div>
+
+                {/* +5 MINS */}
+                {callState === "active" && (
+                  <div className="flex flex-col items-center gap-2">
+                    <button
+                      onClick={() => setShowExtendPayment(true)}
+                      className="w-14 h-14 rounded-full bg-green-500 flex items-center justify-center text-white shadow-lg active:scale-95 transition-transform"
+                    >
+                      <div className="flex flex-col items-center">
+                        <FiPlus size={16} />
+                        <span className="text-[9px] font-bold">5min</span>
+                      </div>
+                    </button>
+                    <span className="text-white/70 text-xs">₹99</span>
+                  </div>
+                )}
+              </>
+            )}
+          </div>
         </div>
-      </div>
+      )}
+
+      {/* EXTEND PAYMENT MODAL */}
+      {showExtendPayment && (
+        <VideoCallPaymentModal
+          otherName={otherName}
+          otherImageUrl={otherImageUrl}
+          type="extend"
+          onPay={handleExtendPaid}
+          onCancel={() => setShowExtendPayment(false)}
+        />
+      )}
     </div>
   );
 }

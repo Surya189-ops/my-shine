@@ -1,5 +1,3 @@
-
-
 import mongoose, { Schema, models, model } from "mongoose";
 
 const ProfileSchema = new Schema(
@@ -29,19 +27,12 @@ const ProfileSchema = new Schema(
       required: true,
       index: true,
     },
-    tier: {
-      type: String,
-      enum: ["bronze", "silver", "gold"],
-    },
     country: {
       type: String,
       enum: [
         "korea",
         "japan",
         "brazil",
-        "france",
-        "spain",
-        "usa",
         "colombia",
         "venezuela",
         "argentina",
@@ -55,6 +46,23 @@ const ProfileSchema = new Schema(
     imageUrl: {
       type: String,
       default: "",
+    },
+    verificationStatus: {
+      type: String,
+      enum: ["none", "pending", "approved", "rejected"],
+      default: "none",
+    },
+    verificationPhoto: {
+      type: String,
+      default: "",
+    },
+    verificationPhone: {
+      type: String,
+      default: "",
+    },
+    isOnHomepage: {
+      type: Boolean,
+      default: false,
     },
   },
   { timestamps: true }

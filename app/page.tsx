@@ -1,538 +1,356 @@
-// app/page.tsx - COMPLETE UPDATED VERSION
+// app/page.tsx
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { useRouter } from "next/navigation";
 import BottomNav from "./components/BottomNav";
 import { FiChevronDown, FiChevronRight, FiChevronLeft } from "react-icons/fi";
 import { IoChatbubbleEllipsesOutline } from "react-icons/io5";
 import DebugPanel from "./components/DebugPanel";
 
-type Tier = "bronze" | "silver" | "gold";
-type Gender = "male" | "female";
-type Country =
-  | "all"
-  | "korea"
-  | "japan"
-  | "brazil"
-  | "france"
-  | "spain"
-  | "usa"
-  | "colombia"
-  | "venezuela"
-  | "argentina";
+type Gender = "male" | "female" | "all";
+type Place = "all" | "korea" | "japan" | "latin";
 
-type Plan = { duration: string; price: number };
+const LATIN_COUNTRIES = ["brazil", "colombia", "venezuela", "argentina"];
+const PROFILES_PER_PAGE = 4;
 
 type Profile = {
   _id: string;
   name: string;
-  tier: Tier;
-  gender: Gender;
-  country?: Country;
+  gender: string;
+  country?: string;
   imageUrl?: string;
+  tier?: string;
 };
 
-const PROFILES_PER_PAGE = 4;
-
-// Helper to check if profile is real (MongoDB ObjectId = 24 hex chars)
 const isRealProfile = (profileId: any) => {
   if (!profileId) return false;
   return String(profileId).length === 24;
 };
 
-/* -------- COUNTRY RULES (SWITCHED) -------- */
-const MEN_COUNTRIES: Country[] = ["usa", "brazil", "colombia", "venezuela", "argentina"];
-const WOMEN_COUNTRIES: Country[] = ["korea", "japan", "brazil", "france", "spain"];
-
-/* -------- DEFAULT PROFILES (PER TIER) -------- */
-const defaultProfiles: Record<Tier, Profile[]> = {
-  bronze: [
-    { _id: "b1", name: "Sophia", tier: "bronze", gender: "female", country: "korea" },
-    { _id: "b2", name: "Camila", tier: "bronze", gender: "female", country: "japan" },
-    { _id: "b3", name: "Ana", tier: "bronze", gender: "female", country: "brazil" },
-    { _id: "b4", name: "Maria", tier: "bronze", gender: "female", country: "france" },
-    { _id: "b5", name: "Julia", tier: "bronze", gender: "female", country: "spain" },
-    { _id: "b6", name: "Gabriela", tier: "bronze", gender: "female", country: "korea" },
-    { _id: "b7", name: "Luna", tier: "bronze", gender: "female", country: "japan" },
-    { _id: "b8", name: "Valentina", tier: "bronze", gender: "female", country: "brazil" },
-    { _id: "b9", name: "Raymond", tier: "bronze", gender: "male", country: "usa" },
-    { _id: "b10", name: "Kenji", tier: "bronze", gender: "male", country: "brazil" },
-    { _id: "b11", name: "Carlos", tier: "bronze", gender: "male", country: "colombia" },
-    { _id: "b12", name: "Lucas", tier: "bronze", gender: "male", country: "venezuela" },
-    { _id: "b13", name: "Diego", tier: "bronze", gender: "male", country: "argentina" },
-    { _id: "b14", name: "Mateo", tier: "bronze", gender: "male", country: "usa" },
-    { _id: "b15", name: "Jae", tier: "bronze", gender: "male", country: "brazil" },
-    { _id: "b16", name: "Hiroshi", tier: "bronze", gender: "male", country: "colombia" },
-  ],
-  silver: [
-    { _id: "s1", name: "Valeria", tier: "silver", gender: "female", country: "korea" },
-    { _id: "s2", name: "Lucía", tier: "silver", gender: "female", country: "japan" },
-    { _id: "s3", name: "Elena", tier: "silver", gender: "female", country: "brazil" },
-    { _id: "s4", name: "Sofia", tier: "silver", gender: "female", country: "france" },
-    { _id: "s5", name: "Isabella", tier: "silver", gender: "female", country: "spain" },
-    { _id: "s6", name: "Natalia", tier: "silver", gender: "female", country: "korea" },
-    { _id: "s7", name: "Camila", tier: "silver", gender: "female", country: "japan" },
-    { _id: "s8", name: "Andrea", tier: "silver", gender: "female", country: "brazil" },
-    { _id: "s9", name: "Min Jae", tier: "silver", gender: "male", country: "usa" },
-    { _id: "s10", name: "Pierre", tier: "silver", gender: "male", country: "brazil" },
-    { _id: "s11", name: "Hiro", tier: "silver", gender: "male", country: "colombia" },
-    { _id: "s12", name: "Rafael", tier: "silver", gender: "male", country: "venezuela" },
-    { _id: "s13", name: "Javier", tier: "silver", gender: "male", country: "argentina" },
-    { _id: "s14", name: "Jin", tier: "silver", gender: "male", country: "usa" },
-    { _id: "s15", name: "Yuto", tier: "silver", gender: "male", country: "brazil" },
-    { _id: "s16", name: "Miguel", tier: "silver", gender: "male", country: "colombia" },
-  ],
-  gold: [
-    { _id: "g1", name: "Isabella", tier: "gold", gender: "female", country: "korea" },
-    { _id: "g2", name: "Emily", tier: "gold", gender: "female", country: "japan" },
-    { _id: "g3", name: "Valentina", tier: "gold", gender: "female", country: "brazil" },
-    { _id: "g4", name: "Martina", tier: "gold", gender: "female", country: "france" },
-    { _id: "g5", name: "Juliana", tier: "gold", gender: "female", country: "spain" },
-    { _id: "g6", name: "Amanda", tier: "gold", gender: "female", country: "korea" },
-    { _id: "g7", name: "Carolina", tier: "gold", gender: "female", country: "japan" },
-    { _id: "g8", name: "Daniela", tier: "gold", gender: "female", country: "brazil" },
-    { _id: "g9", name: "Takashi", tier: "gold", gender: "male", country: "usa" },
-    { _id: "g10", name: "Diego", tier: "gold", gender: "male", country: "brazil" },
-    { _id: "g11", name: "Seo-jun", tier: "gold", gender: "male", country: "colombia" },
-    { _id: "g12", name: "Antoine", tier: "gold", gender: "male", country: "venezuela" },
-    { _id: "g13", name: "Yuki", tier: "gold", gender: "male", country: "argentina" },
-    { _id: "g14", name: "Gabriel", tier: "gold", gender: "male", country: "usa" },
-    { _id: "g15", name: "Mateo", tier: "gold", gender: "male", country: "brazil" },
-    { _id: "g16", name: "Tae-hyung", tier: "gold", gender: "male", country: "colombia" },
-  ],
-};
-
-/* -------- PLANS -------- */
-const plans: Record<Tier, Plan[]> = {
-  bronze: [
-    { duration: "30 mins", price: 199 },
-    { duration: "1 hr", price: 299 },
-  ],
-  silver: [
-    { duration: "30 mins", price: 499 },
-    { duration: "1 hr", price: 699 },
-  ],
-  gold: [
-    { duration: "30 mins", price: 1999 },
-    { duration: "1 hr", price: 2999 },
-  ],
-};
-
-/* -------- TIER COLORS -------- */
-const tierColors = {
-  bronze: {
-    active: "bg-gradient-to-br from-orange-400 via-amber-600 to-orange-700",
-    inactive: "bg-gray-300",
-  },
-  silver: {
-    active: "bg-gradient-to-br from-gray-300 via-gray-400 to-gray-500",
-    inactive: "bg-gray-300",
-  },
-  gold: {
-    active: "bg-gradient-to-br from-yellow-400 via-yellow-500 to-amber-500",
-    inactive: "bg-gray-300",
-  },
-};
+const defaultProfiles: Profile[] = [
+  { _id: "d1", name: "Gojoooo", gender: "male", country: "japan", imageUrl: "/japan-male-1.jpg" },
+  { _id: "d2", name: "king_sukunaa", gender: "male", country: "japan", imageUrl: "/japan-male-2.jpg" },
+  { _id: "d3", name: "mikeykun", gender: "male", country: "japan", imageUrl: "/japan-male-3.jpg" },
+  { _id: "d4", name: "Ninja naruto", gender: "male", country: "japan", imageUrl: "/japan-male-4.jpg" },
+  { _id: "d5", name: "mitusurii", gender: "female", country: "japan", imageUrl: "/japan-female-1.jpg" },
+  { _id: "d6", name: "cutie_Nezuko1", gender: "female", country: "japan", imageUrl: "/japan-female-2.jpg" },
+  { _id: "d7", name: "henata_62", gender: "female", country: "japan", imageUrl: "/japan-female-3.jpg" },
+  { _id: "d8", name: "utahime009", gender: "female", country: "japan", imageUrl: "/japan-female-4.jpg" },
+  { _id: "d9", name: "K_Taehyung", gender: "male", country: "korea", imageUrl: "/korea-male-1.jpg" },
+  { _id: "d10", name: "SeoulVibes", gender: "male", country: "korea", imageUrl: "/korea-male-2.jpg" },
+  { _id: "d11", name: "Jungkook_95", gender: "male", country: "korea", imageUrl: "/korea-male-3.jpg" },
+  { _id: "d12", name: "MinYoongi", gender: "male", country: "korea", imageUrl: "/korea-male-4.jpg" },
+  { _id: "d13", name: "NamjoonKR", gender: "male", country: "korea", imageUrl: "/korea-male-5.jpg" },
+  { _id: "d14", name: "HopeOnStreet", gender: "male", country: "korea", imageUrl: "/korea-male-6.jpg" },
+  { _id: "d15", name: "JiminPark", gender: "male", country: "korea", imageUrl: "/korea-male-7.jpg" },
+  { _id: "d16", name: "ShinWonho", gender: "male", country: "korea", imageUrl: "/korea-male-8.jpg" },
+  { _id: "d17", name: "KangDaniel", gender: "male", country: "korea", imageUrl: "/korea-male-9.jpg" },
+  { _id: "d18", name: "LeeKnow_SKZ", gender: "male", country: "korea", imageUrl: "/korea-male-10.jpg" },
+];
 
 export default function HomePage() {
   const router = useRouter();
 
-  const [viewerGender, setViewerGender] = useState<Gender>("male");
-  const [selectedTier, setSelectedTier] = useState<Tier>("bronze");
-  const [selectedPlan, setSelectedPlan] = useState<Plan>(plans.bronze[0]);
-  const [selectedCountry, setSelectedCountry] = useState<Country>("all");
-  const [showCountries, setShowCountries] = useState(false);
+  const [selectedPlace, setSelectedPlace] = useState<Place>("all");
+  const [selectedGender, setSelectedGender] = useState<Gender>("all");
+  const [showPlaceDropdown, setShowPlaceDropdown] = useState(false);
+  const [showGenderDropdown, setShowGenderDropdown] = useState(false);
   const [profiles, setProfiles] = useState<Profile[]>([]);
   const [loading, setLoading] = useState(true);
   const [currentPage, setCurrentPage] = useState(0);
   const [requestedProfiles, setRequestedProfiles] = useState<Set<string>>(new Set());
   const [unreadCount, setUnreadCount] = useState(0);
 
-  const oppositeGender: Gender = viewerGender;
-  const allowedCountries =
-    viewerGender === "female" ? WOMEN_COUNTRIES : MEN_COUNTRIES;
+  const placeRef = useRef<HTMLDivElement>(null);
+  const genderRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    const userStr = localStorage.getItem("myshine_user");
-    if (!userStr) {
-      router.replace("/login");
-      return;
-    }
-
-    const user = JSON.parse(userStr);
-
-    // Fetch profiles
-    fetch(`/api/profiles?gender=${viewerGender}`)
-      .then((res) => res.json())
-      .then((data) => {
-        if (data.success) {
-          setProfiles(data.profiles);
-        }
-        setLoading(false);
-      })
-      .catch(() => setLoading(false));
-
-    // Fetch unread conversation count (number of people, not messages)
-    if (user.profileId) {
-      fetch(`/api/messages/unread-conversations?profileId=${user.profileId}`)
-        .then((res) => res.json())
-        .then((data) => {
-          if (data.success) {
-            setUnreadCount(data.unreadConversationCount);
-          }
-        })
-        .catch((err) => console.error("Failed to fetch unread count:", err));
-    }
-  }, [router, oppositeGender, viewerGender]);
-
-  // Listen for new messages and refresh badge
-  useEffect(() => {
-    const handleRefresh = () => {
-      const userStr = localStorage.getItem("myshine_user");
-      if (userStr) {
-        const user = JSON.parse(userStr);
-        if (user.profileId) {
-          fetch(`/api/messages/unread-conversations?profileId=${user.profileId}`)
-            .then((res) => res.json())
-            .then((data) => {
-              if (data.success) {
-                setUnreadCount(data.unreadConversationCount);
-              }
-            })
-            .catch((err) => console.error("Failed to refresh unread count:", err));
-        }
-      }
+    const handleClickOutside = (e: MouseEvent) => {
+      if (placeRef.current && !placeRef.current.contains(e.target as Node))
+        setShowPlaceDropdown(false);
+      if (genderRef.current && !genderRef.current.contains(e.target as Node))
+        setShowGenderDropdown(false);
     };
-
-    window.addEventListener("refreshMessageBadge", handleRefresh);
-
-    return () => {
-      window.removeEventListener("refreshMessageBadge", handleRefresh);
-    };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
   useEffect(() => {
-    setSelectedPlan(plans[selectedTier][0]);
-    setSelectedCountry("all");
-    setCurrentPage(0);
-  }, [selectedTier, viewerGender]);
+    const userStr = localStorage.getItem("myshine_user");
+    if (!userStr) { router.replace("/login"); return; }
+    const user = JSON.parse(userStr);
 
-  /* -------- FILTER REAL PROFILES -------- */
-  const filtered = profiles.filter((p) => {
-    if (p.tier !== selectedTier || p.gender !== viewerGender) return false;
-    if (p.country && !allowedCountries.includes(p.country as Country)) return false;
-    if (selectedCountry !== "all" && p.country !== selectedCountry) return false;
+    fetch(`/api/profiles`)
+      .then((res) => res.json())
+      .then((data) => { if (data.success) setProfiles(data.profiles); setLoading(false); })
+      .catch(() => setLoading(false));
+
+    if (user.profileId) {
+      fetch(`/api/messages/unread-conversations?profileId=${user.profileId}`)
+        .then((res) => res.json())
+        .then((data) => { if (data.success) setUnreadCount(data.unreadConversationCount); })
+        .catch(console.error);
+    }
+  }, [router]);
+
+  useEffect(() => {
+    const handleRefresh = () => {
+      const userStr = localStorage.getItem("myshine_user");
+      if (!userStr) return;
+      const user = JSON.parse(userStr);
+      if (!user.profileId) return;
+      fetch(`/api/messages/unread-conversations?profileId=${user.profileId}`)
+        .then((res) => res.json())
+        .then((data) => { if (data.success) setUnreadCount(data.unreadConversationCount); })
+        .catch(console.error);
+    };
+    window.addEventListener("refreshMessageBadge", handleRefresh);
+    return () => window.removeEventListener("refreshMessageBadge", handleRefresh);
+  }, []);
+
+  useEffect(() => { setCurrentPage(0); }, [selectedPlace, selectedGender]);
+
+  const matchesPlace = (country?: string) => {
+    if (selectedPlace === "all") return true;
+    if (selectedPlace === "korea") return country === "korea";
+    if (selectedPlace === "japan") return country === "japan";
+    if (selectedPlace === "latin") return LATIN_COUNTRIES.includes(country || "");
     return true;
-  });
+  };
 
-  /* -------- GET ALL AVAILABLE PROFILES (REAL + DEFAULTS) -------- */
-  const allAvailableProfiles = (() => {
-    const defaults = defaultProfiles[selectedTier].filter(
-      (dp) =>
-        dp.gender === viewerGender &&
-        allowedCountries.includes(dp.country as Country) &&
-        (selectedCountry === "all" || dp.country === selectedCountry) &&
-        !filtered.some((rp) => rp._id === dp._id)
-    );
-    return [...filtered, ...defaults];
-  })();
+  const matchesGender = (gender: string) =>
+    selectedGender === "all" ? true : gender === selectedGender;
 
-  /* -------- PAGINATE: SHOW 4 AT A TIME -------- */
+  const filteredReal = profiles.filter(
+    (p) => matchesPlace(p.country) && matchesGender(p.gender)
+  );
+
+  const filteredDefaults = defaultProfiles.filter(
+    (dp) =>
+      matchesPlace(dp.country) &&
+      matchesGender(dp.gender) &&
+      !filteredReal.some((rp) => rp._id === dp._id)
+  );
+
+  const allProfiles = [...filteredReal, ...filteredDefaults];
+
   const startIndex = currentPage * PROFILES_PER_PAGE;
-  const endIndex = startIndex + PROFILES_PER_PAGE;
-  const displayedProfiles = allAvailableProfiles.slice(startIndex, endIndex);
+  const displayed = allProfiles.slice(startIndex, startIndex + PROFILES_PER_PAGE);
+  const padded = [
+    ...displayed,
+    ...Array(Math.max(0, PROFILES_PER_PAGE - displayed.length)).fill(null),
+  ];
+  const hasMore = startIndex + PROFILES_PER_PAGE < allProfiles.length;
+  const hasPrev = currentPage > 0;
 
-  /* -------- PAD TO EXACTLY 4 -------- */
-  const paddedProfiles = (() => {
-    if (displayedProfiles.length >= PROFILES_PER_PAGE) {
-      return displayedProfiles.slice(0, PROFILES_PER_PAGE);
-    }
-    const padding = Array(PROFILES_PER_PAGE - displayedProfiles.length).fill(null);
-    return [...displayedProfiles, ...padding];
-  })();
-
-  const hasMore = endIndex < allAvailableProfiles.length;
-  const hasPrevious = currentPage > 0;
-
-  const loadMore = () => {
-    if (hasMore) {
-      setCurrentPage((prev) => prev + 1);
-    }
-  };
-
-  const loadPrevious = () => {
-    if (hasPrevious) {
-      setCurrentPage((prev) => prev - 1);
-    }
-  };
+  const comingSoon = () => alert("Coming Soon! This profile will be available shortly. 🌟");
 
   const handleConnect = async (e: React.MouseEvent, profileId: string) => {
     e.stopPropagation();
-
-    if (!isRealProfile(profileId)) {
-      return;
-    }
-
+    if (!isRealProfile(profileId)) { comingSoon(); return; }
     const userStr = localStorage.getItem("myshine_user");
-    if (!userStr) {
-      alert("Please login first");
-      return;
-    }
-
+    if (!userStr) return alert("Please login first");
     const user = JSON.parse(userStr);
-
-    if (!user.profileId) {
-      alert("Profile not found. Please complete your profile.");
-      return;
-    }
-
+    if (!user.profileId) return alert("Complete your profile first");
     try {
       const res = await fetch("/api/connections/request", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          fromProfileId: user.profileId,
-          toProfileId: profileId,
-        }),
+        body: JSON.stringify({ fromProfileId: user.profileId, toProfileId: profileId }),
       });
-
       const data = await res.json();
-
-      if (data.success) {
-        setRequestedProfiles((prev) => new Set(prev).add(profileId));
-        console.log("✅ Connection request sent successfully");
-      } else {
-        alert(data.message || "Request already sent");
-      }
-    } catch (err) {
-      console.error("❌ Connection request error:", err);
-      alert("Something went wrong");
-    }
+      if (data.success) setRequestedProfiles((prev) => new Set(prev).add(profileId));
+      else alert(data.message || "Request already sent");
+    } catch { alert("Something went wrong"); }
   };
 
   const handleChat = (e: React.MouseEvent, profileId: string) => {
     e.stopPropagation();
-
-    if (!isRealProfile(profileId)) {
-      return;
-    }
-
+    if (!isRealProfile(profileId)) { comingSoon(); return; }
     router.push(`/chat/${profileId}`);
   };
 
   const handleProfileClick = (profileId: string) => {
-    if (!isRealProfile(profileId)) {
-      return;
-    }
+    if (!isRealProfile(profileId)) { comingSoon(); return; }
     router.push(`/profile/${profileId}`);
   };
 
+  const placeLabel = { all: "Place", korea: "Korea", japan: "Japan", latin: "Latin" }[selectedPlace];
+  const genderLabel = { all: "Gen", male: "Male", female: "Female" }[selectedGender];
+
   if (loading)
-    return <p className="p-6 text-center text-gray-500">Loading profiles…</p>;
+    return (
+      <p className="p-6 text-center text-gray-500 dark:text-gray-400 bg-gray-50 dark:bg-gray-900 min-h-screen">
+        Loading profiles…
+      </p>
+    );
 
   return (
     <>
-      <style jsx global>{`
-        @keyframes pulse-glow {
-          0%, 100% {
-            box-shadow: 0 0 8px rgba(0, 0, 0, 0.1);
-          }
-          50% {
-            box-shadow: 0 0 20px rgba(251, 146, 60, 0.6);
-          }
-        }
-        .animate-pulse-glow {
-          animation: pulse-glow 2s ease-in-out infinite;
-        }
-      `}</style>
-
-      <div className="min-h-screen bg-gray-50 px-3 pb-20">
+      <div className="min-h-screen bg-gray-50 dark:bg-gray-900 px-3 pb-20 transition-colors duration-300">
         <div className="mx-auto max-w-[560px]">
 
-          {/* HEADER WITH MY SHINE, TIER CIRCLES, AND MESSAGES ICON - ALL IN ONE LINE */}
-          <div className="flex items-center justify-between py-3 sticky top-0 bg-gray-50 z-10">
-            {/* Left: My Shine Logo */}
-            <h1 className="text-xl font-bold text-pink-500">My Shine</h1>
+          {/* HEADER */}
+          <div className="py-3 sticky top-0 bg-gray-50 dark:bg-gray-900 z-10 transition-colors duration-300">
 
-            {/* Center: Tier Circles */}
-            <div className="flex gap-2 absolute left-1/2 transform -translate-x-1/2">
-              {(["bronze", "silver", "gold"] as Tier[]).map((tier) => (
-                <button
-                  key={tier}
-                  onClick={() => setSelectedTier(tier)}
-                  className={`w-7 h-7 rounded-full transition-all duration-300
-                    ${selectedTier === tier
-                      ? `${tierColors[tier].active} shadow-lg scale-110 animate-pulse-glow`
-                      : tierColors[tier].inactive
-                    }`}
-                />
-              ))}
+            {/* TOP ROW */}
+            <div className="flex items-center justify-between mb-2">
+              <h1 className="text-xl font-bold text-pink-500">My Shine</h1>
+              <button
+                onClick={() => router.push("/chats")}
+                className="relative p-1.5 hover:bg-white dark:hover:bg-gray-800 rounded-full transition-colors"
+              >
+                <IoChatbubbleEllipsesOutline size={22} className="text-gray-700 dark:text-gray-300" />
+                {unreadCount > 0 && (
+                  <div className="absolute -top-1 -right-1 min-w-[18px] h-[18px] bg-pink-500 text-white text-[10px] font-bold rounded-full flex items-center justify-center px-1">
+                    {unreadCount > 9 ? "9+" : unreadCount}
+                  </div>
+                )}
+              </button>
             </div>
 
-            {/* Right: Messages Icon */}
-            <button
-              onClick={() => router.push("/chats")}
-              className="relative p-2 hover:bg-white rounded-full transition-colors"
-            >
-              <IoChatbubbleEllipsesOutline size={26} className="text-gray-700" />
-              {unreadCount > 0 && (
-                <div className="absolute -top-1 -right-1 min-w-[20px] h-5 bg-pink-500 text-white text-xs font-bold rounded-full flex items-center justify-center px-1">
-                  {unreadCount > 9 ? "9+" : unreadCount}
-                </div>
-              )}
-            </button>
-          </div>
+            {/* FILTER ROW */}
+            <div className="flex items-center justify-center gap-2">
 
-          {/* FILTERS */}
-          <div className="pb-2 space-y-2">
-            {/* PLAN SELECTOR */}
-            <div className="flex justify-center gap-2">
-              {plans[selectedTier].map((plan) => (
+              {/* PLACE */}
+              <div className="relative" ref={placeRef}>
                 <button
-                  key={plan.price}
-                  onClick={() => setSelectedPlan(plan)}
-                  className={`px-4 py-1 rounded-full text-xs font-medium transition-all
-                    ${selectedPlan.price === plan.price
-                      ? "bg-pink-500 text-white shadow"
-                      : "bg-gray-200 text-gray-700"
-                    }`}
+                  onClick={() => { setShowPlaceDropdown((p) => !p); setShowGenderDropdown(false); }}
+                  className={`flex items-center gap-1 px-3 py-1.5 rounded-full text-xs font-medium border transition-all ${
+                    selectedPlace !== "all"
+                      ? "bg-pink-500 text-white border-pink-500"
+                      : "bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 border-gray-200 dark:border-gray-600 shadow-sm"
+                  }`}
                 >
-                  ₹{plan.price}
+                  {placeLabel}
+                  <FiChevronDown size={11} />
                 </button>
-              ))}
-            </div>
-
-            {/* GENDER + COUNTRY */}
-            <div className="flex justify-center items-center gap-2">
-              {(["male", "female"] as Gender[]).map((g) => (
-                <button
-                  key={g}
-                  onClick={() => setViewerGender(g)}
-                  className={`px-4 py-1 rounded-full text-xs font-medium transition-all
-                    ${viewerGender === g
-                      ? "bg-pink-500 text-white shadow"
-                      : "bg-white shadow text-gray-700"
-                    }`}
-                >
-                  {g.charAt(0).toUpperCase() + g.slice(1)}
-                </button>
-              ))}
-
-              {/* COUNTRY DROPDOWN */}
-              <div className="relative">
-                <button
-                  onClick={() => setShowCountries((p) => !p)}
-                  className="px-3 py-1 rounded-full bg-white shadow text-xs font-medium flex items-center gap-1 text-gray-700"
-                >
-                  {selectedCountry === "all" ? "Countries" : selectedCountry.charAt(0).toUpperCase() + selectedCountry.slice(1)}
-                  <FiChevronDown size={12} />
-                </button>
-
-                {showCountries && (
-                  <div className="absolute top-9 right-0 w-40 bg-white rounded-lg shadow-lg z-20 py-1">
-                    <button
-                      onClick={() => {
-                        setSelectedCountry("all");
-                        setShowCountries(false);
-                      }}
-                      className={`w-full px-3 py-1.5 text-left text-xs hover:bg-pink-50 ${selectedCountry === "all" ? "bg-pink-50 text-pink-600 font-medium" : ""
-                        }`}
-                    >
-                      All Countries
-                    </button>
-                    {allowedCountries.map((c) => (
+                {showPlaceDropdown && (
+                  <div className="absolute top-9 left-0 w-36 bg-white dark:bg-gray-800 rounded-xl shadow-lg z-30 py-1 border border-gray-100 dark:border-gray-700">
+                    {[
+                      { value: "all", label: "All Places" },
+                      { value: "korea", label: "🇰🇷 Korea" },
+                      { value: "japan", label: "🇯🇵 Japan" },
+                      { value: "latin", label: "🌎 Latin Countries" },
+                    ].map((opt) => (
                       <button
-                        key={c}
-                        onClick={() => {
-                          setSelectedCountry(c);
-                          setShowCountries(false);
-                        }}
-                        className={`w-full px-3 py-1.5 text-left text-xs hover:bg-pink-50 capitalize ${selectedCountry === c ? "bg-pink-50 text-pink-600 font-medium" : ""
-                          }`}
+                        key={opt.value}
+                        onClick={() => { setSelectedPlace(opt.value as Place); setShowPlaceDropdown(false); }}
+                        className={`w-full px-3 py-2 text-left text-xs hover:bg-pink-50 dark:hover:bg-gray-700 transition-colors ${
+                          selectedPlace === opt.value
+                            ? "text-pink-600 font-semibold bg-pink-50 dark:bg-gray-700"
+                            : "text-gray-700 dark:text-gray-300"
+                        }`}
                       >
-                        {c}
+                        {opt.label}
                       </button>
                     ))}
                   </div>
                 )}
               </div>
+
+              {/* GENDER */}
+              <div className="relative" ref={genderRef}>
+                <button
+                  onClick={() => { setShowGenderDropdown((p) => !p); setShowPlaceDropdown(false); }}
+                  className={`flex items-center gap-1 px-3 py-1.5 rounded-full text-xs font-medium border transition-all ${
+                    selectedGender !== "all"
+                      ? "bg-pink-500 text-white border-pink-500"
+                      : "bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 border-gray-200 dark:border-gray-600 shadow-sm"
+                  }`}
+                >
+                  {genderLabel}
+                  <FiChevronDown size={11} />
+                </button>
+                {showGenderDropdown && (
+                  <div className="absolute top-9 left-0 w-28 bg-white dark:bg-gray-800 rounded-xl shadow-lg z-30 py-1 border border-gray-100 dark:border-gray-700">
+                    {[
+                      { value: "all", label: "All" },
+                      { value: "male", label: "♂ Male" },
+                      { value: "female", label: "♀ Female" },
+                    ].map((opt) => (
+                      <button
+                        key={opt.value}
+                        onClick={() => { setSelectedGender(opt.value as Gender); setShowGenderDropdown(false); }}
+                        className={`w-full px-3 py-2 text-left text-xs hover:bg-pink-50 dark:hover:bg-gray-700 transition-colors ${
+                          selectedGender === opt.value
+                            ? "text-pink-600 font-semibold bg-pink-50 dark:bg-gray-700"
+                            : "text-gray-700 dark:text-gray-300"
+                        }`}
+                      >
+                        {opt.label}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {/* TOUR */}
+              <button
+                onClick={() => router.push("/tour")}
+                className="px-3 py-1.5 rounded-full text-xs font-medium bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 border border-gray-200 dark:border-gray-600 shadow-sm hover:bg-pink-50 dark:hover:bg-gray-700 hover:text-pink-500 hover:border-pink-300 transition-all"
+              >
+                Tour
+              </button>
             </div>
           </div>
 
-          {/* PROFILE GRID WITH NAVIGATION */}
-          <div className="mt-3 flex items-center gap-2">
+          {/* PROFILE GRID */}
+          <div className="mt-2 flex items-center gap-2">
+
             {/* LEFT ARROW */}
-            <div className="w-8 sm:w-10 flex-shrink-0">
-              {hasPrevious && (
+            <div className="w-8 flex-shrink-0">
+              {hasPrev && (
                 <button
-                  onClick={loadPrevious}
-                  className="w-8 h-8 sm:w-10 sm:h-10 rounded-full bg-pink-500 text-white shadow-lg flex items-center justify-center hover:bg-pink-600 transition-all hover:scale-110 active:scale-95"
+                  onClick={() => setCurrentPage((p) => p - 1)}
+                  className="w-8 h-8 rounded-full bg-pink-500 text-white shadow-lg flex items-center justify-center hover:bg-pink-600 transition-all hover:scale-110 active:scale-95"
                 >
-                  <FiChevronLeft size={18} className="sm:w-5 sm:h-5" />
+                  <FiChevronLeft size={16} />
                 </button>
               )}
             </div>
 
-            {/* PROFILE GRID */}
-            <div className="flex-1 grid grid-cols-2 gap-2 sm:gap-2.5">
-              {paddedProfiles.map((profile, idx) => (
+            {/* GRID */}
+            <div className="flex-1 grid grid-cols-2 gap-2">
+              {padded.map((profile, idx) =>
                 profile ? (
                   <div
                     key={profile._id}
                     onClick={() => handleProfileClick(profile._id)}
-                    className={`rounded-lg overflow-hidden bg-white shadow-sm flex flex-col transition-all duration-300 ${isRealProfile(profile._id)
-                      ? "hover:-translate-y-2 hover:shadow-xl cursor-pointer"
-                      : "opacity-75 cursor-not-allowed"
-                      }`}
-                    style={{ height: "300px" }}
+                    className="rounded-lg overflow-hidden bg-white dark:bg-gray-800 shadow-sm flex flex-col cursor-pointer hover:-translate-y-2 hover:shadow-xl transition-all duration-300"
                   >
+                    {/* IMAGE — fixed height */}
                     <div
-                      className="bg-gray-200 bg-cover bg-center"
+                      className="bg-gray-200 dark:bg-gray-700 bg-cover bg-top w-full flex-shrink-0"
                       style={{
                         backgroundImage: `url(${profile.imageUrl || "/placeholder.jpg"})`,
-                        height: "220px"
+                        height: "200px",
                       }}
                     />
 
-                    <div className="p-2.5 flex flex-col gap-1 flex-1">
-                      <p className="text-sm font-semibold text-center truncate">
+                    {/* INFO — fixed height with padding */}
+                    <div className="px-2 pt-2 pb-2 flex flex-col gap-1">
+                      <p className="text-sm font-semibold text-center truncate text-gray-800 dark:text-gray-100">
                         {profile.name}
                       </p>
-                      <p className="text-[11px] text-center text-gray-500">
-                        {selectedPlan.duration} | ₹{selectedPlan.price}
+                      <p className="text-[10px] text-center text-gray-400 dark:text-gray-500 capitalize">
+                        {profile.country || ""}
                       </p>
-
-                      <div className="flex gap-1.5 mt-1">
+                      <div className="flex gap-1.5 mt-1 w-full">
                         <button
                           onClick={(e) => handleConnect(e, profile._id)}
-                          disabled={
-                            !isRealProfile(profile._id) ||
+                          className={`flex-1 text-white text-[11px] py-1.5 rounded font-medium transition-all active:scale-95 ${
                             requestedProfiles.has(profile._id)
-                          }
-                          className={`flex-1 text-white text-[11px] py-1.5 rounded font-medium
-                            ${!isRealProfile(profile._id)
-                              ? "bg-gray-300 cursor-not-allowed"
-                              : requestedProfiles.has(profile._id)
-                                ? "bg-green-500"
-                                : "bg-pink-500 hover:bg-pink-600"
-                            }`}
+                              ? "bg-green-500"
+                              : "bg-pink-500 hover:bg-pink-600"
+                          }`}
                         >
-                          {!isRealProfile(profile._id)
-                            ? "Unavailable"
-                            : requestedProfiles.has(profile._id)
-                              ? "Request Sent"
-                              : "Connect"}
+                          {requestedProfiles.has(profile._id) ? "Sent ✓" : "Connect"}
                         </button>
-
                         <button
                           onClick={(e) => handleChat(e, profile._id)}
-                          disabled={!isRealProfile(profile._id)}
-                          className={`flex-1 border text-[11px] py-1.5 rounded font-medium transition-all
-                            ${isRealProfile(profile._id)
-                              ? "border-pink-500 text-pink-500 hover:bg-pink-50 active:scale-95"
-                              : "border-gray-300 text-gray-400 cursor-not-allowed"
-                            }`}
+                          className="flex-1 border border-pink-500 text-pink-500 text-[11px] py-1.5 rounded font-medium bg-transparent hover:bg-pink-50 dark:hover:bg-pink-900/20 transition-all active:scale-95"
                         >
                           Chat
                         </button>
@@ -540,19 +358,23 @@ export default function HomePage() {
                     </div>
                   </div>
                 ) : (
-                  <div key={`empty-${idx}`} className="rounded-lg bg-gray-100" style={{ height: "300px" }} />
+                  <div
+                    key={`empty-${idx}`}
+                    className="rounded-lg bg-gray-100 dark:bg-gray-800"
+                    style={{ height: "265px" }}
+                  />
                 )
-              ))}
+              )}
             </div>
 
             {/* RIGHT ARROW */}
-            <div className="w-8 sm:w-10 flex-shrink-0">
+            <div className="w-8 flex-shrink-0">
               {hasMore && (
                 <button
-                  onClick={loadMore}
-                  className="w-8 h-8 sm:w-10 sm:h-10 rounded-full bg-pink-500 text-white shadow-lg flex items-center justify-center hover:bg-pink-600 transition-all hover:scale-110 active:scale-95"
+                  onClick={() => setCurrentPage((p) => p + 1)}
+                  className="w-8 h-8 rounded-full bg-pink-500 text-white shadow-lg flex items-center justify-center hover:bg-pink-600 transition-all hover:scale-110 active:scale-95"
                 >
-                  <FiChevronRight size={18} className="sm:w-5 sm:h-5" />
+                  <FiChevronRight size={16} />
                 </button>
               )}
             </div>

@@ -7,22 +7,23 @@ export async function GET(request: Request) {
     await connectDB();
 
     const { searchParams } = new URL(request.url);
-    const gender = searchParams.get("gender") || "male";
+    const gender = searchParams.get("gender");
+    const country = searchParams.get("country");
 
-    if (!["male", "female", "other"].includes(gender)) {
-      return NextResponse.json(
-        { success: false, message: "Invalid gender parameter" },
-        { status: 400 }
-      );
+    const query: any = {
+      isOnHomepage: true,
+    };
+
+    if (gender && ["male", "female", "other"].includes(gender)) {
+      query.gender = gender;
     }
 
-    const profiles = await Profile.find({
-      gender,
-      tier: { $in: ["bronze", "silver", "gold"] },
-    })
-      .select(
-        "_id name age bio gender tier country isCameraVerified imageUrl createdAt"
-      )
+    if (country) {
+      query.country = country;
+    }
+
+    const profiles = await Profile.find(query)
+      .select("_id name age bio gender country isCameraVerified imageUrl createdAt")
       .sort({ createdAt: -1 })
       .lean();
 

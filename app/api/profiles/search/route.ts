@@ -19,24 +19,22 @@ export async function GET(req: Request) {
 
     await connectDB();
 
-    // Build search filter
     const filter: any = {
-      name: { $regex: query, $options: "i" } // Case-insensitive search
+      name: { $regex: `^${query.trim()}`, $options: "i" } // ^ = starts with
     };
 
-    // Add gender filter if provided
     if (gender && (gender === "male" || gender === "female")) {
       filter.gender = gender;
     }
 
-    console.log("🔍 Searching profiles with filter:", filter);
+    console.log("🔍 Searching profiles starting with:", query);
 
     const profiles = await Profile.find(filter)
       .select("name age gender tier country imageUrl bio")
-      .limit(50) // Limit results
+      .limit(50)
       .lean();
 
-    console.log(`✅ Found ${profiles.length} profiles matching "${query}"`);
+    console.log(`✅ Found ${profiles.length} profiles starting with "${query}"`);
 
     return NextResponse.json({
       success: true,
@@ -46,11 +44,7 @@ export async function GET(req: Request) {
   } catch (error: any) {
     console.error("❌ Search error:", error);
     return NextResponse.json(
-      {
-        success: false,
-        message: "Search failed",
-        error: error.message
-      },
+      { success: false, message: "Search failed", error: error.message },
       { status: 500 }
     );
   }
