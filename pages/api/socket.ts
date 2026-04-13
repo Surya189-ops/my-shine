@@ -2,7 +2,7 @@
 import { Server as NetServer } from "http";
 import { NextApiRequest } from "next";
 import { Server as ServerIO } from "socket.io";
-import { NextApiResponseServerIo } from "@/types/socket";
+import { NextApiResponseServerIO } from "@/types/socket";
 
 export const config = {
   api: {
@@ -12,7 +12,7 @@ export const config = {
 
 export default async function handler(
   req: NextApiRequest,
-  res: NextApiResponseServerIo
+  res: NextApiResponseServerIO
 ) {
   if (!res.socket.server.io) {
     console.log("🚀 Initializing Socket.io server...");
