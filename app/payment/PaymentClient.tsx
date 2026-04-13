@@ -41,7 +41,7 @@ const getPlansForTier = (tier?: string) =>
 export default function PaymentClient() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const profileId = searchParams.get("profileId");
+  const profileId = searchParams?.get("profileId");
 
   const [profile, setProfile] = useState<Profile | null>(null);
   const [selectedPlan, setSelectedPlan] = useState<{
@@ -124,11 +124,10 @@ export default function PaymentClient() {
             <button
               key={plan.duration}
               onClick={() => setSelectedPlan(plan)}
-              className={`w-full flex justify-between px-4 py-3 ${
-                selectedPlan.duration === plan.duration
+              className={`w-full flex justify-between px-4 py-3 ${selectedPlan.duration === plan.duration
                   ? "bg-pink-50"
                   : ""
-              }`}
+                }`}
             >
               <div className="flex items-center gap-2 text-sm">
                 <FiClock /> {plan.duration} mins
