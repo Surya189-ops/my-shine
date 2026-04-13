@@ -77,7 +77,7 @@ export async function POST(req: NextRequest) {
       messageData.isViewOnce = isViewOnce || false;
     }
 
-    const message = await Message.create(messageData);
+    const message = await Message.create(messageData) as any;
 
     console.log("✅ Message created:", message._id);
 
