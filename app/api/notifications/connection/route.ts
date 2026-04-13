@@ -47,20 +47,23 @@ export async function GET(req: NextRequest) {
     console.log(`✅ Found ${requests.length} active connection requests`);
 
     // Format the response
-    const notifications = requests.map((req) => ({
-      _id: req._id.toString(),
-      fromProfile: req.fromProfileId ? {
-        _id: req.fromProfileId._id.toString(),
-        name: req.fromProfileId.name,
-        imageUrl: req.fromProfileId.imageUrl,
-        age: req.fromProfileId.age,
-        gender: req.fromProfileId.gender,
-        tier: req.fromProfileId.tier,
-      } : null,
-      requestId: req._id.toString(),
-      createdAt: req.createdAt,
-      expiresAt: new Date(req.createdAt.getTime() + 7 * 60 * 1000), // 7 minutes from creation
-    }));
+    const notifications = requests.map((req) => {
+      const from = req.fromProfileId as any;
+      return {
+        _id: req._id.toString(),
+        fromProfile: from ? {
+          _id: from._id.toString(),
+          name: from.name,
+          imageUrl: from.imageUrl,
+          age: from.age,
+          gender: from.gender,
+          tier: from.tier,
+        } : null,
+        requestId: req._id.toString(),
+        createdAt: req.createdAt,
+        expiresAt: new Date(req.createdAt.getTime() + 7 * 60 * 1000),
+      };
+    });
 
     return NextResponse.json({
       success: true,
