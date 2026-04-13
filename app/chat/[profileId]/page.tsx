@@ -58,7 +58,7 @@ type VideoCallState = {
 export default function ChatPage() {
   const router = useRouter();
   const params = useParams();
-  const otherProfileId = params.profileId as string;
+  const otherProfileId = (params?.profileId ?? "") as string;
 
   const [profile, setProfile] = useState<Profile | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
