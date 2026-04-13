@@ -659,11 +659,10 @@ export default function ChatPage() {
 
     return (
       <div
-        className={`px-4 py-2 rounded-2xl text-sm max-w-[70%] ${
-          isMine
+        className={`px-4 py-2 rounded-2xl text-sm max-w-[70%] ${isMine
             ? "bg-pink-100 text-gray-500 rounded-br-none"
             : "bg-gray-100 text-gray-500 shadow rounded-bl-none"
-        }`}
+          }`}
       >
         <div className="flex items-center gap-2 italic">
           <span className="text-xs">🚫</span>
@@ -720,9 +719,8 @@ export default function ChatPage() {
         onClick={() => handleImageView(message)}
       >
         <div
-          className={`relative rounded-2xl overflow-hidden cursor-pointer ${
-            isMine ? "rounded-br-none" : "rounded-bl-none"
-          }`}
+          className={`relative rounded-2xl overflow-hidden cursor-pointer ${isMine ? "rounded-br-none" : "rounded-bl-none"
+            }`}
         >
           {shouldBlur && (
             <div className="absolute inset-0 z-0">
@@ -755,9 +753,8 @@ export default function ChatPage() {
 
           {message.text && (
             <div
-              className={`relative z-30 px-3 py-2 ${
-                isMine ? "bg-pink-500 text-white" : "bg-white"
-              }`}
+              className={`relative z-30 px-3 py-2 ${isMine ? "bg-pink-500 text-white" : "bg-white"
+                }`}
             >
               <div className="flex items-end gap-1">
                 <span className="text-sm">{message.text}</span>
@@ -870,20 +867,18 @@ export default function ChatPage() {
                   renderImageMessage(msg)
                 ) : (
                   <div
-                    className={`px-4 py-2 rounded-2xl text-sm max-w-[70%] ${
-                      isMine
+                    className={`px-4 py-2 rounded-2xl text-sm max-w-[70%] ${isMine
                         ? "bg-pink-500 text-white rounded-br-none"
                         : "bg-white shadow rounded-bl-none"
-                    }`}
+                      }`}
                   >
                     <div className="flex items-end gap-1">
                       <div className="flex flex-col">
                         <span>{msg.text}</span>
                         {msg.isEdited && (
                           <span
-                            className={`text-xs mt-1 ${
-                              isMine ? "text-pink-200" : "text-gray-400"
-                            }`}
+                            className={`text-xs mt-1 ${isMine ? "text-pink-200" : "text-gray-400"
+                              }`}
                           >
                             edited
                           </span>
@@ -952,6 +947,7 @@ export default function ChatPage() {
           messageCreatedAt={contextMenu.messageCreatedAt}
           onEdit={(id, text) => setEditingMessage({ id, text })}
           onDelete={handleDeleteMessage}
+          onTranslate={() => { }}
           onClose={() => setContextMenu(null)}
           position={contextMenu.position}
         />
