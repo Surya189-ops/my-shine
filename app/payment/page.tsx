@@ -42,14 +42,14 @@ type PaymentMethod = "upi" | "card" | "netbanking" | "wallet";
 export default function PaymentPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const profileId = searchParams.get("profileId");
-  const requestId = searchParams.get("requestId");
+  const profileId = searchParams?.get("profileId");
+  const requestId = searchParams?.get("requestId");
 
   const [profile, setProfile] = useState<Profile | null>(null);
   const [selectedPlan, setSelectedPlan] = useState<Plan | null>(null);
   const [loading, setLoading] = useState(true);
   const [processing, setProcessing] = useState(false);
-  
+
   // Payment method states
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>("upi");
   const [selectedUPI, setSelectedUPI] = useState<string>("phonepe");
@@ -403,11 +403,10 @@ export default function PaymentPage() {
                     <button
                       key={plan.price}
                       onClick={() => setSelectedPlan(plan)}
-                      className={`w-full p-3 rounded-lg border-2 transition-all text-left ${
-                        selectedPlan?.price === plan.price
+                      className={`w-full p-3 rounded-lg border-2 transition-all text-left ${selectedPlan?.price === plan.price
                           ? "border-pink-500 bg-pink-50"
                           : "border-gray-200 hover:border-pink-300"
-                      }`}
+                        }`}
                     >
                       <div className="flex items-center justify-between">
                         <span className="font-semibold text-gray-900">{plan.duration}</span>
