@@ -94,7 +94,7 @@ const tierPricing = {
 export default function ProfileViewPage() {
   const router = useRouter();
   const params = useParams();
-  const profileId = params.profileId as string;
+  const profileId = (params?.profileId ?? "") as string;
 
   const [profile, setProfile] = useState<Profile | null>(null);
   const [loading, setLoading] = useState(true);
