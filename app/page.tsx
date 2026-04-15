@@ -28,7 +28,6 @@ const isRealProfile = (profileId: any) => {
   return String(profileId).length === 24;
 };
 
-// Fisher-Yates shuffle — returns a new shuffled array
 function shuffleArray<T>(arr: T[]): T[] {
   const a = [...arr];
   for (let i = a.length - 1; i > 0; i--) {
@@ -39,17 +38,14 @@ function shuffleArray<T>(arr: T[]): T[] {
 }
 
 const defaultProfiles: Profile[] = [
-  // ── Japan male ──
-  { _id: "d1", name: "Gojoooo",      gender: "male",   country: "japan", imageUrl: "/japan-male-1.jpg" },
-  { _id: "d2", name: "king_sukunaa", gender: "male",   country: "japan", imageUrl: "/japan-male-2.jpg" },
-  { _id: "d3", name: "mikeykun",     gender: "male",   country: "japan", imageUrl: "/japan-male-3.jpg" },
-  { _id: "d4", name: "Ninja naruto", gender: "male",   country: "japan", imageUrl: "/japan-male-4.jpg" },
-  // ── Japan female ──
-  { _id: "d5",  name: "mitusurii",    gender: "female", country: "japan", imageUrl: "/japan-female-1.jpg" },
-  { _id: "d6",  name: "cutie_Nezuko1",gender: "female", country: "japan", imageUrl: "/japan-female-2.jpg" },
-  { _id: "d7",  name: "henata_62",    gender: "female", country: "japan", imageUrl: "/japan-female-3.jpg" },
-  { _id: "d8",  name: "utahime009",   gender: "female", country: "japan", imageUrl: "/japan-female-4.jpg" },
-  // ── Korea male — names changed away from BTS/idol names ──
+  { _id: "d1", name: "Gojoooo",       gender: "male",   country: "japan", imageUrl: "/japan-male-1.jpg" },
+  { _id: "d2", name: "king_sukunaa",  gender: "male",   country: "japan", imageUrl: "/japan-male-2.jpg" },
+  { _id: "d3", name: "mikeykun",      gender: "male",   country: "japan", imageUrl: "/japan-male-3.jpg" },
+  { _id: "d4", name: "Ninja naruto",  gender: "male",   country: "japan", imageUrl: "/japan-male-4.jpg" },
+  { _id: "d5", name: "mitusurii",     gender: "female", country: "japan", imageUrl: "/japan-female-1.jpg" },
+  { _id: "d6", name: "cutie_Nezuko1", gender: "female", country: "japan", imageUrl: "/japan-female-2.jpg" },
+  { _id: "d7", name: "henata_62",     gender: "female", country: "japan", imageUrl: "/japan-female-3.jpg" },
+  { _id: "d8", name: "utahime009",    gender: "female", country: "japan", imageUrl: "/japan-female-4.jpg" },
   { _id: "d9",  name: "SeoulSunrise", gender: "male",   country: "korea", imageUrl: "/korea-male-1.jpg" },
   { _id: "d10", name: "HanRiver_K",   gender: "male",   country: "korea", imageUrl: "/korea-male-2.jpg" },
   { _id: "d11", name: "StarK_95",     gender: "male",   country: "korea", imageUrl: "/korea-male-3.jpg" },
@@ -74,7 +70,6 @@ export default function HomePage() {
   const [currentPage, setCurrentPage] = useState(0);
   const [requestedProfiles, setRequestedProfiles] = useState<Set<string>>(new Set());
   const [unreadCount, setUnreadCount] = useState(0);
-  // Stable shuffle seed per filter combination
   const [shuffledAll, setShuffledAll] = useState<Profile[]>([]);
 
   const placeRef = useRef<HTMLDivElement>(null);
@@ -124,7 +119,6 @@ export default function HomePage() {
     return () => window.removeEventListener("refreshMessageBadge", handleRefresh);
   }, []);
 
-  // Re-shuffle and reset page whenever filters or source data change
   useEffect(() => {
     setCurrentPage(0);
 
@@ -149,8 +143,6 @@ export default function HomePage() {
     );
 
     const combined = [...filteredReal, ...filteredDefaults];
-
-    // Shuffle only when "All" is selected (place === "all") so the mix feels random
     setShuffledAll(selectedPlace === "all" ? shuffleArray(combined) : combined);
   }, [selectedPlace, selectedGender, profiles]);
 
@@ -195,7 +187,6 @@ export default function HomePage() {
     router.push(`/profile/${profileId}`);
   };
 
-  // Label: "All" when nothing filtered, otherwise the selected place name
   const placeLabel = { all: "All", korea: "Korea", japan: "Japan", latin: "Latin" }[selectedPlace];
   const genderLabel = { all: "Gen", male: "Male", female: "Female" }[selectedGender];
 
@@ -213,8 +204,6 @@ export default function HomePage() {
 
           {/* HEADER */}
           <div className="py-3 sticky top-0 bg-gray-50 dark:bg-gray-900 z-10 transition-colors duration-300">
-
-            {/* TOP ROW */}
             <div className="flex items-center justify-between mb-2">
               <h1 className="text-xl font-bold text-pink-500">My Shine</h1>
               <button
@@ -230,9 +219,7 @@ export default function HomePage() {
               </button>
             </div>
 
-            {/* FILTER ROW */}
             <div className="flex items-center justify-center gap-2">
-
               {/* PLACE */}
               <div className="relative" ref={placeRef}>
                 <button
@@ -316,28 +303,15 @@ export default function HomePage() {
             </div>
           </div>
 
-          {/* PROFILE GRID */}
-          {/*
-            Mobile layout: arrow buttons shrink to w-6/h-6, cards get the freed space.
-            On sm+ screens the original w-8/h-8 buttons are restored.
-          */}
-          <div className="mt-2 flex items-center gap-1 sm:gap-2">
+          {/* ── PROFILE GRID ─────────────────────────────────────────────────
+              Key change: arrows are position:absolute so they OVERLAY the
+              grid edges instead of sitting beside it. The grid gets 100% of
+              the container width, making every card noticeably wider.
+          ─────────────────────────────────────────────────────────────────── */}
+          <div className="relative mt-2">
 
-            {/* LEFT ARROW */}
-            <div className="w-6 sm:w-8 flex-shrink-0">
-              {hasPrev && (
-                <button
-                  onClick={() => setCurrentPage((p) => p - 1)}
-                  className="w-6 h-6 sm:w-8 sm:h-8 rounded-full bg-pink-500 text-white shadow-lg flex items-center justify-center hover:bg-pink-600 transition-all hover:scale-110 active:scale-95"
-                >
-                  <FiChevronLeft size={13} className="sm:hidden" />
-                  <FiChevronLeft size={16} className="hidden sm:block" />
-                </button>
-              )}
-            </div>
-
-            {/* GRID — flex-1 so it fills all space between the arrows */}
-            <div className="flex-1 grid grid-cols-2 gap-2">
+            {/* Full-width 2-column grid */}
+            <div className="grid grid-cols-2 gap-2">
               {padded.map((profile, idx) =>
                 profile ? (
                   <div
@@ -350,7 +324,7 @@ export default function HomePage() {
                       className="bg-gray-200 dark:bg-gray-700 bg-cover bg-top w-full flex-shrink-0"
                       style={{
                         backgroundImage: `url(${profile.imageUrl || "/placeholder.jpg"})`,
-                        height: "200px",
+                        height: "210px",
                       }}
                     />
 
@@ -386,24 +360,37 @@ export default function HomePage() {
                   <div
                     key={`empty-${idx}`}
                     className="rounded-lg bg-gray-100 dark:bg-gray-800"
-                    style={{ height: "265px" }}
+                    style={{ height: "275px" }}
                   />
                 )
               )}
             </div>
 
-            {/* RIGHT ARROW */}
-            <div className="w-6 sm:w-8 flex-shrink-0">
-              {hasMore && (
-                <button
-                  onClick={() => setCurrentPage((p) => p + 1)}
-                  className="w-6 h-6 sm:w-8 sm:h-8 rounded-full bg-pink-500 text-white shadow-lg flex items-center justify-center hover:bg-pink-600 transition-all hover:scale-110 active:scale-95"
-                >
-                  <FiChevronRight size={13} className="sm:hidden" />
-                  <FiChevronRight size={16} className="hidden sm:block" />
-                </button>
-              )}
-            </div>
+            {/* LEFT ARROW — floats over the left edge, vertically centred */}
+            {hasPrev && (
+              <button
+                onClick={() => setCurrentPage((p) => p - 1)}
+                style={{ top: "50%", transform: "translate(-40%, -50%)" }}
+                className="absolute left-0 w-7 h-7 rounded-full bg-pink-500 text-white shadow-lg z-20
+                           flex items-center justify-center
+                           hover:bg-pink-600 transition-all hover:scale-110 active:scale-95"
+              >
+                <FiChevronLeft size={14} />
+              </button>
+            )}
+
+            {/* RIGHT ARROW — floats over the right edge, vertically centred */}
+            {hasMore && (
+              <button
+                onClick={() => setCurrentPage((p) => p + 1)}
+                style={{ top: "50%", transform: "translate(40%, -50%)" }}
+                className="absolute right-0 w-7 h-7 rounded-full bg-pink-500 text-white shadow-lg z-20
+                           flex items-center justify-center
+                           hover:bg-pink-600 transition-all hover:scale-110 active:scale-95"
+              >
+                <FiChevronRight size={14} />
+              </button>
+            )}
           </div>
 
         </div>
