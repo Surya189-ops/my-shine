@@ -28,25 +28,38 @@ const isRealProfile = (profileId: any) => {
   return String(profileId).length === 24;
 };
 
+// Fisher-Yates shuffle — returns a new shuffled array
+function shuffleArray<T>(arr: T[]): T[] {
+  const a = [...arr];
+  for (let i = a.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [a[i], a[j]] = [a[j], a[i]];
+  }
+  return a;
+}
+
 const defaultProfiles: Profile[] = [
-  { _id: "d1", name: "Gojoooo", gender: "male", country: "japan", imageUrl: "/japan-male-1.jpg" },
-  { _id: "d2", name: "king_sukunaa", gender: "male", country: "japan", imageUrl: "/japan-male-2.jpg" },
-  { _id: "d3", name: "mikeykun", gender: "male", country: "japan", imageUrl: "/japan-male-3.jpg" },
-  { _id: "d4", name: "Ninja naruto", gender: "male", country: "japan", imageUrl: "/japan-male-4.jpg" },
-  { _id: "d5", name: "mitusurii", gender: "female", country: "japan", imageUrl: "/japan-female-1.jpg" },
-  { _id: "d6", name: "cutie_Nezuko1", gender: "female", country: "japan", imageUrl: "/japan-female-2.jpg" },
-  { _id: "d7", name: "henata_62", gender: "female", country: "japan", imageUrl: "/japan-female-3.jpg" },
-  { _id: "d8", name: "utahime009", gender: "female", country: "japan", imageUrl: "/japan-female-4.jpg" },
-  { _id: "d9", name: "K_Taehyung", gender: "male", country: "korea", imageUrl: "/korea-male-1.jpg" },
-  { _id: "d10", name: "SeoulVibes", gender: "male", country: "korea", imageUrl: "/korea-male-2.jpg" },
-  { _id: "d11", name: "Jungkook_95", gender: "male", country: "korea", imageUrl: "/korea-male-3.jpg" },
-  { _id: "d12", name: "MinYoongi", gender: "male", country: "korea", imageUrl: "/korea-male-4.jpg" },
-  { _id: "d13", name: "NamjoonKR", gender: "male", country: "korea", imageUrl: "/korea-male-5.jpg" },
-  { _id: "d14", name: "HopeOnStreet", gender: "male", country: "korea", imageUrl: "/korea-male-6.jpg" },
-  { _id: "d15", name: "JiminPark", gender: "male", country: "korea", imageUrl: "/korea-male-7.jpg" },
-  { _id: "d16", name: "ShinWonho", gender: "male", country: "korea", imageUrl: "/korea-male-8.jpg" },
-  { _id: "d17", name: "KangDaniel", gender: "male", country: "korea", imageUrl: "/korea-male-9.jpg" },
-  { _id: "d18", name: "LeeKnow_SKZ", gender: "male", country: "korea", imageUrl: "/korea-male-10.jpg" },
+  // ── Japan male ──
+  { _id: "d1", name: "Gojoooo",      gender: "male",   country: "japan", imageUrl: "/japan-male-1.jpg" },
+  { _id: "d2", name: "king_sukunaa", gender: "male",   country: "japan", imageUrl: "/japan-male-2.jpg" },
+  { _id: "d3", name: "mikeykun",     gender: "male",   country: "japan", imageUrl: "/japan-male-3.jpg" },
+  { _id: "d4", name: "Ninja naruto", gender: "male",   country: "japan", imageUrl: "/japan-male-4.jpg" },
+  // ── Japan female ──
+  { _id: "d5",  name: "mitusurii",    gender: "female", country: "japan", imageUrl: "/japan-female-1.jpg" },
+  { _id: "d6",  name: "cutie_Nezuko1",gender: "female", country: "japan", imageUrl: "/japan-female-2.jpg" },
+  { _id: "d7",  name: "henata_62",    gender: "female", country: "japan", imageUrl: "/japan-female-3.jpg" },
+  { _id: "d8",  name: "utahime009",   gender: "female", country: "japan", imageUrl: "/japan-female-4.jpg" },
+  // ── Korea male — names changed away from BTS/idol names ──
+  { _id: "d9",  name: "SeoulSunrise", gender: "male",   country: "korea", imageUrl: "/korea-male-1.jpg" },
+  { _id: "d10", name: "HanRiver_K",   gender: "male",   country: "korea", imageUrl: "/korea-male-2.jpg" },
+  { _id: "d11", name: "StarK_95",     gender: "male",   country: "korea", imageUrl: "/korea-male-3.jpg" },
+  { _id: "d12", name: "BlueSky_KR",   gender: "male",   country: "korea", imageUrl: "/korea-male-4.jpg" },
+  { _id: "d13", name: "MoonlitSeoul", gender: "male",   country: "korea", imageUrl: "/korea-male-5.jpg" },
+  { _id: "d14", name: "UrbanWave_K",  gender: "male",   country: "korea", imageUrl: "/korea-male-6.jpg" },
+  { _id: "d15", name: "ChillKorean",  gender: "male",   country: "korea", imageUrl: "/korea-male-7.jpg" },
+  { _id: "d16", name: "WonheeKR",     gender: "male",   country: "korea", imageUrl: "/korea-male-8.jpg" },
+  { _id: "d17", name: "DanielK_99",   gender: "male",   country: "korea", imageUrl: "/korea-male-9.jpg" },
+  { _id: "d18", name: "NightOwl_KR",  gender: "male",   country: "korea", imageUrl: "/korea-male-10.jpg" },
 ];
 
 export default function HomePage() {
@@ -61,6 +74,8 @@ export default function HomePage() {
   const [currentPage, setCurrentPage] = useState(0);
   const [requestedProfiles, setRequestedProfiles] = useState<Set<string>>(new Set());
   const [unreadCount, setUnreadCount] = useState(0);
+  // Stable shuffle seed per filter combination
+  const [shuffledAll, setShuffledAll] = useState<Profile[]>([]);
 
   const placeRef = useRef<HTMLDivElement>(null);
   const genderRef = useRef<HTMLDivElement>(null);
@@ -109,39 +124,43 @@ export default function HomePage() {
     return () => window.removeEventListener("refreshMessageBadge", handleRefresh);
   }, []);
 
-  useEffect(() => { setCurrentPage(0); }, [selectedPlace, selectedGender]);
+  // Re-shuffle and reset page whenever filters or source data change
+  useEffect(() => {
+    setCurrentPage(0);
 
-  const matchesPlace = (country?: string) => {
-    if (selectedPlace === "all") return true;
-    if (selectedPlace === "korea") return country === "korea";
-    if (selectedPlace === "japan") return country === "japan";
-    if (selectedPlace === "latin") return LATIN_COUNTRIES.includes(country || "");
-    return true;
-  };
+    const matchesPlace = (country?: string) => {
+      if (selectedPlace === "all") return true;
+      if (selectedPlace === "korea") return country === "korea";
+      if (selectedPlace === "japan") return country === "japan";
+      if (selectedPlace === "latin") return LATIN_COUNTRIES.includes(country || "");
+      return true;
+    };
+    const matchesGender = (gender: string) =>
+      selectedGender === "all" ? true : gender === selectedGender;
 
-  const matchesGender = (gender: string) =>
-    selectedGender === "all" ? true : gender === selectedGender;
+    const filteredReal = profiles.filter(
+      (p) => matchesPlace(p.country) && matchesGender(p.gender)
+    );
+    const filteredDefaults = defaultProfiles.filter(
+      (dp) =>
+        matchesPlace(dp.country) &&
+        matchesGender(dp.gender) &&
+        !filteredReal.some((rp) => rp._id === dp._id)
+    );
 
-  const filteredReal = profiles.filter(
-    (p) => matchesPlace(p.country) && matchesGender(p.gender)
-  );
+    const combined = [...filteredReal, ...filteredDefaults];
 
-  const filteredDefaults = defaultProfiles.filter(
-    (dp) =>
-      matchesPlace(dp.country) &&
-      matchesGender(dp.gender) &&
-      !filteredReal.some((rp) => rp._id === dp._id)
-  );
-
-  const allProfiles = [...filteredReal, ...filteredDefaults];
+    // Shuffle only when "All" is selected (place === "all") so the mix feels random
+    setShuffledAll(selectedPlace === "all" ? shuffleArray(combined) : combined);
+  }, [selectedPlace, selectedGender, profiles]);
 
   const startIndex = currentPage * PROFILES_PER_PAGE;
-  const displayed = allProfiles.slice(startIndex, startIndex + PROFILES_PER_PAGE);
+  const displayed = shuffledAll.slice(startIndex, startIndex + PROFILES_PER_PAGE);
   const padded = [
     ...displayed,
     ...Array(Math.max(0, PROFILES_PER_PAGE - displayed.length)).fill(null),
   ];
-  const hasMore = startIndex + PROFILES_PER_PAGE < allProfiles.length;
+  const hasMore = startIndex + PROFILES_PER_PAGE < shuffledAll.length;
   const hasPrev = currentPage > 0;
 
   const comingSoon = () => alert("Coming Soon! This profile will be available shortly. 🌟");
@@ -176,7 +195,8 @@ export default function HomePage() {
     router.push(`/profile/${profileId}`);
   };
 
-  const placeLabel = { all: "Place", korea: "Korea", japan: "Japan", latin: "Latin" }[selectedPlace];
+  // Label: "All" when nothing filtered, otherwise the selected place name
+  const placeLabel = { all: "All", korea: "Korea", japan: "Japan", latin: "Latin" }[selectedPlace];
   const genderLabel = { all: "Gen", male: "Male", female: "Female" }[selectedGender];
 
   if (loading)
@@ -229,7 +249,7 @@ export default function HomePage() {
                 {showPlaceDropdown && (
                   <div className="absolute top-9 left-0 w-36 bg-white dark:bg-gray-800 rounded-xl shadow-lg z-30 py-1 border border-gray-100 dark:border-gray-700">
                     {[
-                      { value: "all", label: "All Places" },
+                      { value: "all",   label: "All" },
                       { value: "korea", label: "🇰🇷 Korea" },
                       { value: "japan", label: "🇯🇵 Japan" },
                       { value: "latin", label: "🌎 Latin Countries" },
@@ -266,8 +286,8 @@ export default function HomePage() {
                 {showGenderDropdown && (
                   <div className="absolute top-9 left-0 w-28 bg-white dark:bg-gray-800 rounded-xl shadow-lg z-30 py-1 border border-gray-100 dark:border-gray-700">
                     {[
-                      { value: "all", label: "All" },
-                      { value: "male", label: "♂ Male" },
+                      { value: "all",    label: "All" },
+                      { value: "male",   label: "♂ Male" },
                       { value: "female", label: "♀ Female" },
                     ].map((opt) => (
                       <button
@@ -297,21 +317,26 @@ export default function HomePage() {
           </div>
 
           {/* PROFILE GRID */}
-          <div className="mt-2 flex items-center gap-2">
+          {/*
+            Mobile layout: arrow buttons shrink to w-6/h-6, cards get the freed space.
+            On sm+ screens the original w-8/h-8 buttons are restored.
+          */}
+          <div className="mt-2 flex items-center gap-1 sm:gap-2">
 
             {/* LEFT ARROW */}
-            <div className="w-8 flex-shrink-0">
+            <div className="w-6 sm:w-8 flex-shrink-0">
               {hasPrev && (
                 <button
                   onClick={() => setCurrentPage((p) => p - 1)}
-                  className="w-8 h-8 rounded-full bg-pink-500 text-white shadow-lg flex items-center justify-center hover:bg-pink-600 transition-all hover:scale-110 active:scale-95"
+                  className="w-6 h-6 sm:w-8 sm:h-8 rounded-full bg-pink-500 text-white shadow-lg flex items-center justify-center hover:bg-pink-600 transition-all hover:scale-110 active:scale-95"
                 >
-                  <FiChevronLeft size={16} />
+                  <FiChevronLeft size={13} className="sm:hidden" />
+                  <FiChevronLeft size={16} className="hidden sm:block" />
                 </button>
               )}
             </div>
 
-            {/* GRID */}
+            {/* GRID — flex-1 so it fills all space between the arrows */}
             <div className="flex-1 grid grid-cols-2 gap-2">
               {padded.map((profile, idx) =>
                 profile ? (
@@ -320,7 +345,7 @@ export default function HomePage() {
                     onClick={() => handleProfileClick(profile._id)}
                     className="rounded-lg overflow-hidden bg-white dark:bg-gray-800 shadow-sm flex flex-col cursor-pointer hover:-translate-y-2 hover:shadow-xl transition-all duration-300"
                   >
-                    {/* IMAGE — fixed height */}
+                    {/* IMAGE */}
                     <div
                       className="bg-gray-200 dark:bg-gray-700 bg-cover bg-top w-full flex-shrink-0"
                       style={{
@@ -329,7 +354,7 @@ export default function HomePage() {
                       }}
                     />
 
-                    {/* INFO — fixed height with padding */}
+                    {/* INFO */}
                     <div className="px-2 pt-2 pb-2 flex flex-col gap-1">
                       <p className="text-sm font-semibold text-center truncate text-gray-800 dark:text-gray-100">
                         {profile.name}
@@ -368,13 +393,14 @@ export default function HomePage() {
             </div>
 
             {/* RIGHT ARROW */}
-            <div className="w-8 flex-shrink-0">
+            <div className="w-6 sm:w-8 flex-shrink-0">
               {hasMore && (
                 <button
                   onClick={() => setCurrentPage((p) => p + 1)}
-                  className="w-8 h-8 rounded-full bg-pink-500 text-white shadow-lg flex items-center justify-center hover:bg-pink-600 transition-all hover:scale-110 active:scale-95"
+                  className="w-6 h-6 sm:w-8 sm:h-8 rounded-full bg-pink-500 text-white shadow-lg flex items-center justify-center hover:bg-pink-600 transition-all hover:scale-110 active:scale-95"
                 >
-                  <FiChevronRight size={16} />
+                  <FiChevronRight size={13} className="sm:hidden" />
+                  <FiChevronRight size={16} className="hidden sm:block" />
                 </button>
               )}
             </div>
