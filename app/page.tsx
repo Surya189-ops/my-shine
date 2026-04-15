@@ -4,7 +4,7 @@
 import { useEffect, useState, useRef } from "react";
 import { useRouter } from "next/navigation";
 import BottomNav from "./components/BottomNav";
-import { FiChevronDown, FiChevronRight, FiChevronLeft } from "react-icons/fi";
+import { FiChevronDown, FiChevronRight, FiChevronLeft, FiMoreVertical } from "react-icons/fi";
 import { IoChatbubbleEllipsesOutline } from "react-icons/io5";
 import DebugPanel from "./components/DebugPanel";
 
@@ -38,25 +38,105 @@ function shuffleArray<T>(arr: T[]): T[] {
 }
 
 const defaultProfiles: Profile[] = [
-  { _id: "d1", name: "Gojoooo",       gender: "male",   country: "japan", imageUrl: "/japan-male-1.jpg" },
-  { _id: "d2", name: "king_sukunaa",  gender: "male",   country: "japan", imageUrl: "/japan-male-2.jpg" },
-  { _id: "d3", name: "mikeykun",      gender: "male",   country: "japan", imageUrl: "/japan-male-3.jpg" },
-  { _id: "d4", name: "Ninja naruto",  gender: "male",   country: "japan", imageUrl: "/japan-male-4.jpg" },
-  { _id: "d5", name: "mitusurii",     gender: "female", country: "japan", imageUrl: "/japan-female-1.jpg" },
-  { _id: "d6", name: "cutie_Nezuko1", gender: "female", country: "japan", imageUrl: "/japan-female-2.jpg" },
-  { _id: "d7", name: "henata_62",     gender: "female", country: "japan", imageUrl: "/japan-female-3.jpg" },
-  { _id: "d8", name: "utahime009",    gender: "female", country: "japan", imageUrl: "/japan-female-4.jpg" },
-  { _id: "d9",  name: "SeoulSunrise", gender: "male",   country: "korea", imageUrl: "/korea-male-1.jpg" },
-  { _id: "d10", name: "HanRiver_K",   gender: "male",   country: "korea", imageUrl: "/korea-male-2.jpg" },
-  { _id: "d11", name: "StarK_95",     gender: "male",   country: "korea", imageUrl: "/korea-male-3.jpg" },
-  { _id: "d12", name: "BlueSky_KR",   gender: "male",   country: "korea", imageUrl: "/korea-male-4.jpg" },
-  { _id: "d13", name: "MoonlitSeoul", gender: "male",   country: "korea", imageUrl: "/korea-male-5.jpg" },
-  { _id: "d14", name: "UrbanWave_K",  gender: "male",   country: "korea", imageUrl: "/korea-male-6.jpg" },
-  { _id: "d15", name: "ChillKorean",  gender: "male",   country: "korea", imageUrl: "/korea-male-7.jpg" },
-  { _id: "d16", name: "WonheeKR",     gender: "male",   country: "korea", imageUrl: "/korea-male-8.jpg" },
-  { _id: "d17", name: "DanielK_99",   gender: "male",   country: "korea", imageUrl: "/korea-male-9.jpg" },
-  { _id: "d18", name: "NightOwl_KR",  gender: "male",   country: "korea", imageUrl: "/korea-male-10.jpg" },
+  { _id: "d1",  name: "Gojoooo",       gender: "male",   country: "japan", imageUrl: "/japan-male-1.jpg" },
+  { _id: "d2",  name: "king_sukunaa",  gender: "male",   country: "japan", imageUrl: "/japan-male-2.jpg" },
+  { _id: "d3",  name: "mikeykun",      gender: "male",   country: "japan", imageUrl: "/japan-male-3.jpg" },
+  { _id: "d4",  name: "Ninja naruto",  gender: "male",   country: "japan", imageUrl: "/japan-male-4.jpg" },
+  { _id: "d5",  name: "mitusurii",     gender: "female", country: "japan", imageUrl: "/japan-female-1.jpg" },
+  { _id: "d6",  name: "cutie_Nezuko1", gender: "female", country: "japan", imageUrl: "/japan-female-2.jpg" },
+  { _id: "d7",  name: "henata_62",     gender: "female", country: "japan", imageUrl: "/japan-female-3.jpg" },
+  { _id: "d8",  name: "utahime009",    gender: "female", country: "japan", imageUrl: "/japan-female-4.jpg" },
+  { _id: "d9",  name: "SeoulSunrise",  gender: "male",   country: "korea", imageUrl: "/korea-male-1.jpg" },
+  { _id: "d10", name: "HanRiver_K",    gender: "male",   country: "korea", imageUrl: "/korea-male-2.jpg" },
+  { _id: "d11", name: "StarK_95",      gender: "male",   country: "korea", imageUrl: "/korea-male-3.jpg" },
+  { _id: "d12", name: "BlueSky_KR",    gender: "male",   country: "korea", imageUrl: "/korea-male-4.jpg" },
+  { _id: "d13", name: "MoonlitSeoul",  gender: "male",   country: "korea", imageUrl: "/korea-male-5.jpg" },
+  { _id: "d14", name: "UrbanWave_K",   gender: "male",   country: "korea", imageUrl: "/korea-male-6.jpg" },
+  { _id: "d15", name: "ChillKorean",   gender: "male",   country: "korea", imageUrl: "/korea-male-7.jpg" },
+  { _id: "d16", name: "WonheeKR",      gender: "male",   country: "korea", imageUrl: "/korea-male-8.jpg" },
+  { _id: "d17", name: "DanielK_99",    gender: "male",   country: "korea", imageUrl: "/korea-male-9.jpg" },
+  { _id: "d18", name: "NightOwl_KR",   gender: "male",   country: "korea", imageUrl: "/korea-male-10.jpg" },
 ];
+
+// ── 3-dot card menu ───────────────────────────────────────────────────────────
+function CardMenu({ profileId, profileName }: { profileId: string; profileName: string }) {
+  const [open, setOpen] = useState(false);
+  const menuRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node))
+        setOpen(false);
+    };
+    if (open) document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [open]);
+
+  const handleSave = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    setOpen(false);
+    alert(`💾 ${profileName} saved!`);
+  };
+
+  const handleBlock = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    setOpen(false);
+    if (confirm(`Block ${profileName}? They won't be able to contact you.`))
+      alert(`🚫 ${profileName} has been blocked.`);
+  };
+
+  const handleReport = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    setOpen(false);
+    alert(`🚩 ${profileName} has been reported. We'll review this profile.`);
+  };
+
+  return (
+    <div
+      ref={menuRef}
+      className="absolute top-2 right-2 z-30"
+      onClick={(e) => e.stopPropagation()}
+    >
+      {/* 3-dot trigger */}
+      <button
+        onClick={(e) => { e.stopPropagation(); setOpen((p) => !p); }}
+        className="w-7 h-7 rounded-full bg-black/40 backdrop-blur-sm flex items-center justify-center
+                   hover:bg-black/60 transition-colors"
+      >
+        <FiMoreVertical size={14} className="text-white" />
+      </button>
+
+      {/* Dropdown */}
+      {open && (
+        <div className="absolute top-8 right-0 w-32 bg-white dark:bg-gray-800 rounded-xl shadow-xl
+                        border border-gray-100 dark:border-gray-700 py-1 overflow-hidden">
+          <button
+            onClick={handleSave}
+            className="w-full px-3 py-2 text-left text-xs text-gray-700 dark:text-gray-200
+                       hover:bg-pink-50 dark:hover:bg-gray-700 flex items-center gap-2 transition-colors"
+          >
+            <span>💾</span> Save
+          </button>
+          <button
+            onClick={handleBlock}
+            className="w-full px-3 py-2 text-left text-xs text-gray-700 dark:text-gray-200
+                       hover:bg-pink-50 dark:hover:bg-gray-700 flex items-center gap-2 transition-colors"
+          >
+            <span>🚫</span> Block
+          </button>
+          <button
+            onClick={handleReport}
+            className="w-full px-3 py-2 text-left text-xs text-red-500
+                       hover:bg-red-50 dark:hover:bg-red-900/20 flex items-center gap-2 transition-colors"
+          >
+            <span>🚩</span> Report
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+// ─────────────────────────────────────────────────────────────────────────────
 
 export default function HomePage() {
   const router = useRouter();
@@ -197,6 +277,63 @@ export default function HomePage() {
       </p>
     );
 
+  // Shared profile card renderer
+  const renderCard = (profile: Profile) => (
+    <div
+      key={profile._id}
+      onClick={() => handleProfileClick(profile._id)}
+      className="rounded-lg overflow-hidden bg-white dark:bg-gray-800 shadow-sm flex flex-col cursor-pointer hover:-translate-y-2 hover:shadow-xl transition-all duration-300 relative"
+    >
+      {/* 3-dot menu — top-right of card image area */}
+      <CardMenu profileId={profile._id} profileName={profile.name} />
+
+      {/* IMAGE */}
+      <div
+        className="bg-gray-200 dark:bg-gray-700 bg-cover bg-top w-full flex-shrink-0"
+        style={{
+          backgroundImage: `url(${profile.imageUrl || "/placeholder.jpg"})`,
+          height: "200px",
+        }}
+      />
+
+      {/* INFO */}
+      <div className="px-2 pt-2 pb-2 flex flex-col gap-1">
+        <p className="text-sm font-semibold text-center truncate text-gray-800 dark:text-gray-100">
+          {profile.name}
+        </p>
+        <p className="text-[10px] text-center text-gray-400 dark:text-gray-500 capitalize">
+          {profile.country || ""}
+        </p>
+        <div className="flex gap-1.5 mt-1 w-full">
+          <button
+            onClick={(e) => handleConnect(e, profile._id)}
+            className={`flex-1 text-white text-[11px] py-1.5 rounded font-medium transition-all active:scale-95 ${
+              requestedProfiles.has(profile._id)
+                ? "bg-green-500"
+                : "bg-pink-500 hover:bg-pink-600"
+            }`}
+          >
+            {requestedProfiles.has(profile._id) ? "Sent ✓" : "Connect"}
+          </button>
+          <button
+            onClick={(e) => handleChat(e, profile._id)}
+            className="flex-1 border border-pink-500 text-pink-500 text-[11px] py-1.5 rounded font-medium bg-transparent hover:bg-pink-50 dark:hover:bg-pink-900/20 transition-all active:scale-95"
+          >
+            Chat
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+
+  const renderEmpty = (idx: number) => (
+    <div
+      key={`empty-${idx}`}
+      className="rounded-lg bg-gray-100 dark:bg-gray-800"
+      style={{ height: "265px" }}
+    />
+  );
+
   return (
     <>
       <div className="min-h-screen bg-gray-50 dark:bg-gray-900 px-3 pb-20 transition-colors duration-300">
@@ -303,70 +440,19 @@ export default function HomePage() {
             </div>
           </div>
 
-          {/* ── PROFILE GRID ─────────────────────────────────────────────────
-              Key change: arrows are position:absolute so they OVERLAY the
-              grid edges instead of sitting beside it. The grid gets 100% of
-              the container width, making every card noticeably wider.
-          ─────────────────────────────────────────────────────────────────── */}
-          <div className="relative mt-2">
+          {/* ── PROFILE GRID ──────────────────────────────────────────────────
+              MOBILE  (< sm): arrows float over grid → cards use full width
+              DESKTOP (≥ sm): arrows sit beside grid → original desktop layout
+          ──────────────────────────────────────────────────────────────────── */}
 
-            {/* Full-width 2-column grid */}
+          {/* ── MOBILE layout: relative wrapper, arrows absolutely positioned ── */}
+          <div className="relative mt-2 sm:hidden">
             <div className="grid grid-cols-2 gap-2">
               {padded.map((profile, idx) =>
-                profile ? (
-                  <div
-                    key={profile._id}
-                    onClick={() => handleProfileClick(profile._id)}
-                    className="rounded-lg overflow-hidden bg-white dark:bg-gray-800 shadow-sm flex flex-col cursor-pointer hover:-translate-y-2 hover:shadow-xl transition-all duration-300"
-                  >
-                    {/* IMAGE */}
-                    <div
-                      className="bg-gray-200 dark:bg-gray-700 bg-cover bg-top w-full flex-shrink-0"
-                      style={{
-                        backgroundImage: `url(${profile.imageUrl || "/placeholder.jpg"})`,
-                        height: "210px",
-                      }}
-                    />
-
-                    {/* INFO */}
-                    <div className="px-2 pt-2 pb-2 flex flex-col gap-1">
-                      <p className="text-sm font-semibold text-center truncate text-gray-800 dark:text-gray-100">
-                        {profile.name}
-                      </p>
-                      <p className="text-[10px] text-center text-gray-400 dark:text-gray-500 capitalize">
-                        {profile.country || ""}
-                      </p>
-                      <div className="flex gap-1.5 mt-1 w-full">
-                        <button
-                          onClick={(e) => handleConnect(e, profile._id)}
-                          className={`flex-1 text-white text-[11px] py-1.5 rounded font-medium transition-all active:scale-95 ${
-                            requestedProfiles.has(profile._id)
-                              ? "bg-green-500"
-                              : "bg-pink-500 hover:bg-pink-600"
-                          }`}
-                        >
-                          {requestedProfiles.has(profile._id) ? "Sent ✓" : "Connect"}
-                        </button>
-                        <button
-                          onClick={(e) => handleChat(e, profile._id)}
-                          className="flex-1 border border-pink-500 text-pink-500 text-[11px] py-1.5 rounded font-medium bg-transparent hover:bg-pink-50 dark:hover:bg-pink-900/20 transition-all active:scale-95"
-                        >
-                          Chat
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-                ) : (
-                  <div
-                    key={`empty-${idx}`}
-                    className="rounded-lg bg-gray-100 dark:bg-gray-800"
-                    style={{ height: "275px" }}
-                  />
-                )
+                profile ? renderCard(profile) : renderEmpty(idx)
               )}
             </div>
 
-            {/* LEFT ARROW — floats over the left edge, vertically centred */}
             {hasPrev && (
               <button
                 onClick={() => setCurrentPage((p) => p - 1)}
@@ -379,7 +465,6 @@ export default function HomePage() {
               </button>
             )}
 
-            {/* RIGHT ARROW — floats over the right edge, vertically centred */}
             {hasMore && (
               <button
                 onClick={() => setCurrentPage((p) => p + 1)}
@@ -391,6 +476,37 @@ export default function HomePage() {
                 <FiChevronRight size={14} />
               </button>
             )}
+          </div>
+
+          {/* ── DESKTOP layout: original flex row with arrows beside grid ── */}
+          <div className="hidden sm:flex mt-2 items-center gap-2">
+            <div className="w-8 flex-shrink-0">
+              {hasPrev && (
+                <button
+                  onClick={() => setCurrentPage((p) => p - 1)}
+                  className="w-8 h-8 rounded-full bg-pink-500 text-white shadow-lg flex items-center justify-center hover:bg-pink-600 transition-all hover:scale-110 active:scale-95"
+                >
+                  <FiChevronLeft size={16} />
+                </button>
+              )}
+            </div>
+
+            <div className="flex-1 grid grid-cols-2 gap-2">
+              {padded.map((profile, idx) =>
+                profile ? renderCard(profile) : renderEmpty(idx)
+              )}
+            </div>
+
+            <div className="w-8 flex-shrink-0">
+              {hasMore && (
+                <button
+                  onClick={() => setCurrentPage((p) => p + 1)}
+                  className="w-8 h-8 rounded-full bg-pink-500 text-white shadow-lg flex items-center justify-center hover:bg-pink-600 transition-all hover:scale-110 active:scale-95"
+                >
+                  <FiChevronRight size={16} />
+                </button>
+              )}
+            </div>
           </div>
 
         </div>
