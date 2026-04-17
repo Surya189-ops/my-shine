@@ -11,7 +11,6 @@ export async function POST(req: Request) {
       age,
       bio,
       gender,
-      tier,
       country,
       isCameraVerified,
     } = body;
@@ -20,14 +19,6 @@ export async function POST(req: Request) {
     if (!userId || !name || !age || !gender) {
       return NextResponse.json(
         { success: false, message: "Missing required fields" },
-        { status: 400 }
-      );
-    }
-
-    // ✅ tier required for BOTH male & female
-    if ((gender === "male" || gender === "female") && !tier) {
-      return NextResponse.json(
-        { success: false, message: "Tier is required" },
         { status: 400 }
       );
     }
@@ -45,13 +36,6 @@ export async function POST(req: Request) {
       country,
       isCameraVerified,
     };
-
-    // ✅ include tier only for male & female
-    if (gender === "male" || gender === "female") {
-      profileData.tier = tier;
-    } else {
-      profileData.tier = undefined;
-    }
 
     if (profile) {
       Object.assign(profile, profileData);
@@ -85,7 +69,6 @@ export async function GET(req: Request) {
     await connectDB();
     const profile = await Profile.findOne({ userId });
 
-    // ✅ Added: Return 404 if not found
     if (!profile) {
       return NextResponse.json(
         { success: false, message: "Profile not found" },

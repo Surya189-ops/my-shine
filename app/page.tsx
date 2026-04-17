@@ -4,7 +4,7 @@
 import { useEffect, useState, useRef } from "react";
 import { useRouter } from "next/navigation";
 import BottomNav from "./components/BottomNav";
-import { FiChevronDown, FiChevronRight, FiChevronLeft, FiMoreVertical } from "react-icons/fi";
+import { FiChevronDown, FiChevronRight, FiChevronLeft } from "react-icons/fi";
 import { IoChatbubbleEllipsesOutline } from "react-icons/io5";
 import DebugPanel from "./components/DebugPanel";
 
@@ -57,86 +57,6 @@ const defaultProfiles: Profile[] = [
   { _id: "d17", name: "DanielK_99",    gender: "male",   country: "korea", imageUrl: "/korea-male-9.jpg" },
   { _id: "d18", name: "NightOwl_KR",   gender: "male",   country: "korea", imageUrl: "/korea-male-10.jpg" },
 ];
-
-// ── 3-dot card menu ───────────────────────────────────────────────────────────
-function CardMenu({ profileId, profileName }: { profileId: string; profileName: string }) {
-  const [open, setOpen] = useState(false);
-  const menuRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    const handler = (e: MouseEvent) => {
-      if (menuRef.current && !menuRef.current.contains(e.target as Node))
-        setOpen(false);
-    };
-    if (open) document.addEventListener("mousedown", handler);
-    return () => document.removeEventListener("mousedown", handler);
-  }, [open]);
-
-  const handleSave = (e: React.MouseEvent) => {
-    e.stopPropagation();
-    setOpen(false);
-    alert(`💾 ${profileName} saved!`);
-  };
-
-  const handleBlock = (e: React.MouseEvent) => {
-    e.stopPropagation();
-    setOpen(false);
-    if (confirm(`Block ${profileName}? They won't be able to contact you.`))
-      alert(`🚫 ${profileName} has been blocked.`);
-  };
-
-  const handleReport = (e: React.MouseEvent) => {
-    e.stopPropagation();
-    setOpen(false);
-    alert(`🚩 ${profileName} has been reported. We'll review this profile.`);
-  };
-
-  return (
-    <div
-      ref={menuRef}
-      className="absolute top-2 right-2 z-30"
-      onClick={(e) => e.stopPropagation()}
-    >
-      {/* 3-dot trigger */}
-      <button
-        onClick={(e) => { e.stopPropagation(); setOpen((p) => !p); }}
-        className="w-7 h-7 rounded-full bg-black/40 backdrop-blur-sm flex items-center justify-center
-                   hover:bg-black/60 transition-colors"
-      >
-        <FiMoreVertical size={14} className="text-white" />
-      </button>
-
-      {/* Dropdown */}
-      {open && (
-        <div className="absolute top-8 right-0 w-32 bg-white dark:bg-gray-800 rounded-xl shadow-xl
-                        border border-gray-100 dark:border-gray-700 py-1 overflow-hidden">
-          <button
-            onClick={handleSave}
-            className="w-full px-3 py-2 text-left text-xs text-gray-700 dark:text-gray-200
-                       hover:bg-pink-50 dark:hover:bg-gray-700 flex items-center gap-2 transition-colors"
-          >
-            <span>💾</span> Save
-          </button>
-          <button
-            onClick={handleBlock}
-            className="w-full px-3 py-2 text-left text-xs text-gray-700 dark:text-gray-200
-                       hover:bg-pink-50 dark:hover:bg-gray-700 flex items-center gap-2 transition-colors"
-          >
-            <span>🚫</span> Block
-          </button>
-          <button
-            onClick={handleReport}
-            className="w-full px-3 py-2 text-left text-xs text-red-500
-                       hover:bg-red-50 dark:hover:bg-red-900/20 flex items-center gap-2 transition-colors"
-          >
-            <span>🚩</span> Report
-          </button>
-        </div>
-      )}
-    </div>
-  );
-}
-// ─────────────────────────────────────────────────────────────────────────────
 
 export default function HomePage() {
   const router = useRouter();
@@ -277,16 +197,12 @@ export default function HomePage() {
       </p>
     );
 
-  // Shared profile card renderer
   const renderCard = (profile: Profile) => (
     <div
       key={profile._id}
       onClick={() => handleProfileClick(profile._id)}
-      className="rounded-lg overflow-hidden bg-white dark:bg-gray-800 shadow-sm flex flex-col cursor-pointer hover:-translate-y-2 hover:shadow-xl transition-all duration-300 relative"
+      className="rounded-lg overflow-hidden bg-white dark:bg-gray-800 shadow-sm flex flex-col cursor-pointer hover:-translate-y-2 hover:shadow-xl transition-all duration-300"
     >
-      {/* 3-dot menu — top-right of card image area */}
-      <CardMenu profileId={profile._id} profileName={profile.name} />
-
       {/* IMAGE */}
       <div
         className="bg-gray-200 dark:bg-gray-700 bg-cover bg-top w-full flex-shrink-0"
@@ -440,45 +356,34 @@ export default function HomePage() {
             </div>
           </div>
 
-          {/* ── PROFILE GRID ──────────────────────────────────────────────────
-              MOBILE  (< sm): arrows float over grid → cards use full width
-              DESKTOP (≥ sm): arrows sit beside grid → original desktop layout
-          ──────────────────────────────────────────────────────────────────── */}
-
-          {/* ── MOBILE layout: relative wrapper, arrows absolutely positioned ── */}
+          {/* MOBILE layout: arrows float over grid */}
           <div className="relative mt-2 sm:hidden">
             <div className="grid grid-cols-2 gap-2">
               {padded.map((profile, idx) =>
                 profile ? renderCard(profile) : renderEmpty(idx)
               )}
             </div>
-
             {hasPrev && (
               <button
                 onClick={() => setCurrentPage((p) => p - 1)}
                 style={{ top: "50%", transform: "translate(-40%, -50%)" }}
-                className="absolute left-0 w-7 h-7 rounded-full bg-pink-500 text-white shadow-lg z-20
-                           flex items-center justify-center
-                           hover:bg-pink-600 transition-all hover:scale-110 active:scale-95"
+                className="absolute left-0 w-7 h-7 rounded-full bg-pink-500 text-white shadow-lg z-20 flex items-center justify-center hover:bg-pink-600 transition-all hover:scale-110 active:scale-95"
               >
                 <FiChevronLeft size={14} />
               </button>
             )}
-
             {hasMore && (
               <button
                 onClick={() => setCurrentPage((p) => p + 1)}
                 style={{ top: "50%", transform: "translate(40%, -50%)" }}
-                className="absolute right-0 w-7 h-7 rounded-full bg-pink-500 text-white shadow-lg z-20
-                           flex items-center justify-center
-                           hover:bg-pink-600 transition-all hover:scale-110 active:scale-95"
+                className="absolute right-0 w-7 h-7 rounded-full bg-pink-500 text-white shadow-lg z-20 flex items-center justify-center hover:bg-pink-600 transition-all hover:scale-110 active:scale-95"
               >
                 <FiChevronRight size={14} />
               </button>
             )}
           </div>
 
-          {/* ── DESKTOP layout: original flex row with arrows beside grid ── */}
+          {/* DESKTOP layout: arrows beside grid */}
           <div className="hidden sm:flex mt-2 items-center gap-2">
             <div className="w-8 flex-shrink-0">
               {hasPrev && (
@@ -490,13 +395,11 @@ export default function HomePage() {
                 </button>
               )}
             </div>
-
             <div className="flex-1 grid grid-cols-2 gap-2">
               {padded.map((profile, idx) =>
                 profile ? renderCard(profile) : renderEmpty(idx)
               )}
             </div>
-
             <div className="w-8 flex-shrink-0">
               {hasMore && (
                 <button
