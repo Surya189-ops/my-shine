@@ -11,10 +11,10 @@ import {
 import { useDarkMode } from "@/app/contexts/DarkModeContext";
 
 const COUNTRIES = [
-  { value: "korea",     label: "🇰🇷 Korea" },
-  { value: "japan",     label: "🇯🇵 Japan" },
-  { value: "brazil",    label: "🌎 Latin — Brazil" },
-  { value: "colombia",  label: "🌎 Latin — Colombia" },
+  { value: "korea", label: "🇰🇷 Korea" },
+  { value: "japan", label: "🇯🇵 Japan" },
+  { value: "brazil", label: "🌎 Latin — Brazil" },
+  { value: "colombia", label: "🌎 Latin — Colombia" },
   { value: "venezuela", label: "🌎 Latin — Venezuela" },
   { value: "argentina", label: "🌎 Latin — Argentina" },
 ];
@@ -214,6 +214,9 @@ export default function ProfilePage() {
 
   const handleLogout = () => {
     if (!window.confirm("Are you sure you want to logout?")) return;
+    // Set flag so login page knows user explicitly logged out
+    // This prevents Google session from auto-logging them back in
+    localStorage.setItem("myshine_logged_out", "true");
     localStorage.removeItem("myshine_user");
     router.replace("/login");
   };
@@ -398,10 +401,10 @@ export default function ProfilePage() {
           {!isEditing && profile ? (
             <div className="space-y-3 mb-6">
               {[
-                { label: "Name",    value: name },
-                { label: "Age",     value: age },
-                { label: "Gender",  value: gender ? gender.charAt(0).toUpperCase() + gender.slice(1) : "—" },
-                { label: "Bio",     value: bio || "—" },
+                { label: "Name", value: name },
+                { label: "Age", value: age },
+                { label: "Gender", value: gender ? gender.charAt(0).toUpperCase() + gender.slice(1) : "—" },
+                { label: "Bio", value: bio || "—" },
                 { label: "Country", value: countryLabel },
               ].map((item) => (
                 <div key={item.label} className="flex flex-col">

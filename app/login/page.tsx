@@ -2,13 +2,13 @@
 
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { signIn, useSession } from "next-auth/react";
+import { signIn, signOut, useSession } from "next-auth/react";
 
 type Step = "home" | "signup-email" | "signup-otp" | "login-email";
 
 export default function LoginPage() {
   const router = useRouter();
-  const { data: session } = useSession();
+  const { data: session, status } = useSession();
 
   const [step, setStep] = useState<Step>("home");
   const [email, setEmail] = useState("");
@@ -21,31 +21,62 @@ export default function LoginPage() {
   const [error, setError] = useState("");
   const [resendTimer, setResendTimer] = useState(0);
 
+  // Check if user explicitly logged out — if so, sign out Google session too
   useEffect(() => {
-    if (session?.user) handleGoogleSessionLogin();
+    const userStr = localStorage.getItem("myshine_user");
+    const wasLoggedOut = localStorage.getItem("myshine_logged_out");
+
+    if (wasLoggedOut === "true" && session) {
+      // Clear the flag and sign out of NextAuth Google session
+      localStorage.removeItem("myshine_logged_out");
+      signOut({ redirect: false });
+      return;
+    }
+
+    // If NextAuth Google session exists AND user hasn't explicitly logged out,
+    // auto-login them
+    if (session?.user && !wasLoggedOut) {
+      handleGoogleSessionLogin();
+    }
   }, [session]);
 
   const handleGoogleSessionLogin = async () => {
     if (!session?.user) return;
     try {
+      // If session doesn't have userId yet (DB was slow), retry fetch by email
       const userId = session.user.id;
+
+      if (!userId) {
+        // userId not in session yet — wait for next render
+        return;
+      }
+
       const profileRes = await fetch(`/api/profile?userId=${userId}`);
       const profileData = await profileRes.json();
+
       if (profileData.success && profileData.profile) {
         localStorage.setItem("myshine_user", JSON.stringify({
-          id: userId, profileId: profileData.profile._id,
-          email: session.user.email, name: profileData.profile.name,
-          loggedIn: true, provider: "google",
+          id: userId,
+          profileId: profileData.profile._id,
+          email: session.user.email,
+          name: profileData.profile.name,
+          loggedIn: true,
+          provider: "google",
         }));
         router.push("/");
       } else {
         localStorage.setItem("myshine_user", JSON.stringify({
-          id: userId, email: session.user.email,
-          name: session.user.name, loggedIn: true, provider: "google",
+          id: userId,
+          email: session.user.email,
+          name: session.user.name,
+          loggedIn: true,
+          provider: "google",
         }));
         router.push("/profile");
       }
-    } catch (err) { console.error("Google session error:", err); }
+    } catch (err) {
+      console.error("Google session error:", err);
+    }
   };
 
   useEffect(() => {
@@ -172,7 +203,11 @@ export default function LoginPage() {
         {step === "home" && (
           <div className="flex flex-col gap-3">
             <button
-              onClick={() => signIn("google", { callbackUrl: "/login" })}
+              onClick={() => {
+                // Clear logged-out flag before Google sign in
+                localStorage.removeItem("myshine_logged_out");
+                signIn("google", { callbackUrl: "/login" });
+              }}
               className="w-full flex items-center justify-center gap-3 border-2 border-gray-200 dark:border-gray-600 py-3 rounded-xl font-semibold text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 transition"
             >
               <img src="https://www.google.com/favicon.ico" className="w-5 h-5" alt="Google" />

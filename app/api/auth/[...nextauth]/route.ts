@@ -38,10 +38,13 @@ const handler = NextAuth({
             await existingUser.save();
           }
 
+          // Always return true — never block Google users
           return true;
         } catch (err) {
           console.error("Google sign in error:", err);
-          return false;
+          // Still return true even on DB error so user isn't shown "Access Denied"
+          // The session will be created and user can retry profile fetch
+          return true;
         }
       }
       return true;
@@ -49,10 +52,20 @@ const handler = NextAuth({
 
     async jwt({ token, user, account }) {
       if (account?.provider === "google" && user) {
-        await connectDB();
-        const dbUser = await User.findOne({ email: user.email });
-        if (dbUser) {
-          token.userId = dbUser._id.toString();
+        try {
+          await connectDB();
+          const dbUser = await User.findOne({ email: user.email });
+          if (dbUser) {
+            token.userId = dbUser._id.toString();
+            token.provider = "google";
+          } else {
+            // DB might have been slow — store email so session still works
+            token.userId = null;
+            token.provider = "google";
+            token.email = user.email;
+          }
+        } catch (err) {
+          console.error("JWT callback error:", err);
           token.provider = "google";
         }
       }
@@ -62,6 +75,8 @@ const handler = NextAuth({
     async session({ session, token }) {
       if (token.userId) {
         session.user.id = token.userId as string;
+      }
+      if (token.provider) {
         session.user.provider = token.provider as string;
       }
       return session;
@@ -69,6 +84,8 @@ const handler = NextAuth({
   },
   pages: {
     signIn: "/login",
+    // Remove error page override so NextAuth doesn't show "Access Denied" page
+    // errors are handled in the signIn callback above
   },
 });
 

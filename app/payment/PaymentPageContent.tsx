@@ -2,7 +2,8 @@
 
 import { useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { FaArrowLeft, FaCheckCircle, FaLock, FaCreditCard } from "react-icons/fa";
+import { FaArrowLeft, FaLock, FaCreditCard } from "react-icons/fa";
+import { FaCheckCircle } from "react-icons/fa";
 import { SiPhonepe, SiPaytm, SiGooglepay } from "react-icons/si";
 
 type Profile = {
@@ -15,25 +16,8 @@ type Profile = {
   imageUrl?: string;
 };
 
-type Plan = {
-  duration: string;
-  price: number;
-};
-
-const plans: Record<"bronze" | "silver" | "gold", Plan[]> = {
-  bronze: [
-    { duration: "30 mins", price: 199 },
-    { duration: "1 hr", price: 299 },
-  ],
-  silver: [
-    { duration: "30 mins", price: 499 },
-    { duration: "1 hr", price: 699 },
-  ],
-  gold: [
-    { duration: "30 mins", price: 1999 },
-    { duration: "1 hr", price: 2999 },
-  ],
-};
+// Fixed single plan — 10 mins ₹199 for all tiers
+const FIXED_PLAN = { duration: "10 mins", price: 199 };
 
 type PaymentMethod = "upi" | "card" | "netbanking" | "wallet";
 
@@ -44,7 +28,6 @@ export default function PaymentPageContent() {
   const requestId = searchParams?.get("requestId");
 
   const [profile, setProfile] = useState<Profile | null>(null);
-  const [selectedPlan, setSelectedPlan] = useState<Plan | null>(null);
   const [loading, setLoading] = useState(true);
   const [processing, setProcessing] = useState(false);
 
@@ -63,7 +46,7 @@ export default function PaymentPageContent() {
       return;
     }
     fetchProfile();
-  }, [profileId, requestId, router]);
+  }, [profileId, requestId]);
 
   const fetchProfile = async () => {
     try {
@@ -71,7 +54,6 @@ export default function PaymentPageContent() {
       const data = await res.json();
       if (data.success) {
         setProfile(data.profile);
-        setSelectedPlan(plans[data.profile.tier as "bronze" | "silver" | "gold"][0]);
       } else {
         alert("Profile not found");
         router.replace("/");
@@ -86,13 +68,12 @@ export default function PaymentPageContent() {
   };
 
   const handlePayment = async () => {
-    if (!selectedPlan || !profile) return;
+    if (!profile) return;
 
     if (paymentMethod === "upi" && selectedUPI === "custom" && !upiId.trim()) {
       alert("Please enter your UPI ID");
       return;
     }
-
     if (paymentMethod === "card") {
       if (!cardNumber.trim() || !cardExpiry.trim() || !cardCVV.trim() || !cardName.trim()) {
         alert("Please fill all card details");
@@ -101,13 +82,11 @@ export default function PaymentPageContent() {
     }
 
     setProcessing(true);
-
     try {
       await new Promise((resolve) => setTimeout(resolve, 2000));
       alert("Payment successful! 🎉");
       router.push(`/chat/${profileId}`);
-    } catch (err) {
-      console.error("Payment error:", err);
+    } catch {
       alert("Payment failed. Please try again.");
       setProcessing(false);
     }
@@ -115,19 +94,19 @@ export default function PaymentPageContent() {
 
   const getTierColor = (tier: string) => {
     switch (tier) {
-      case "gold": return "from-yellow-400 via-yellow-500 to-amber-500";
+      case "gold":   return "from-yellow-400 via-yellow-500 to-amber-500";
       case "silver": return "from-gray-300 via-gray-400 to-gray-500";
       case "bronze": return "from-orange-400 via-amber-600 to-orange-700";
-      default: return "from-gray-400 to-gray-500";
+      default:       return "from-gray-400 to-gray-500";
     }
   };
 
   const getTierBadgeColor = (tier: string) => {
     switch (tier) {
-      case "gold": return "bg-yellow-100 text-yellow-800 border-yellow-300";
+      case "gold":   return "bg-yellow-100 text-yellow-800 border-yellow-300";
       case "silver": return "bg-gray-100 text-gray-800 border-gray-300";
       case "bronze": return "bg-orange-100 text-orange-800 border-orange-300";
-      default: return "bg-gray-100 text-gray-800 border-gray-300";
+      default:       return "bg-gray-100 text-gray-800 border-gray-300";
     }
   };
 
@@ -158,7 +137,7 @@ export default function PaymentPageContent() {
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
 
-          {/* LEFT COLUMN - Payment Methods */}
+          {/* LEFT — Payment Methods */}
           <div className="lg:col-span-2 space-y-4">
 
             {/* UPI */}
@@ -177,9 +156,9 @@ export default function PaymentPageContent() {
                 <div className="border-t p-4 space-y-3">
                   <div className="grid grid-cols-3 gap-3">
                     {[
-                      { id: "phonepe", label: "PhonePe", icon: <SiPhonepe size={32} className="text-purple-600" /> },
-                      { id: "googlepay", label: "Google Pay", icon: <SiGooglepay size={32} className="text-blue-600" /> },
-                      { id: "paytm", label: "Paytm", icon: <SiPaytm size={32} className="text-blue-500" /> },
+                      { id: "phonepe",  label: "PhonePe",   icon: <SiPhonepe   size={32} className="text-purple-600" /> },
+                      { id: "googlepay",label: "Google Pay", icon: <SiGooglepay size={32} className="text-blue-600" /> },
+                      { id: "paytm",    label: "Paytm",      icon: <SiPaytm     size={32} className="text-blue-500" /> },
                     ].map((opt) => (
                       <button
                         key={opt.id}
@@ -198,7 +177,13 @@ export default function PaymentPageContent() {
                     <span className="text-sm font-medium">Enter UPI ID manually</span>
                   </button>
                   {selectedUPI === "custom" && (
-                    <input type="text" placeholder="Enter your UPI ID (e.g., user@paytm)" value={upiId} onChange={(e) => setUpiId(e.target.value)} className="w-full px-4 py-3 border rounded-lg focus:outline-none focus:ring-2 focus:ring-pink-500" />
+                    <input
+                      type="text"
+                      placeholder="Enter your UPI ID (e.g., user@paytm)"
+                      value={upiId}
+                      onChange={(e) => setUpiId(e.target.value)}
+                      className="w-full px-4 py-3 border rounded-lg focus:outline-none focus:ring-2 focus:ring-pink-500"
+                    />
                   )}
                 </div>
               )}
@@ -217,11 +202,19 @@ export default function PaymentPageContent() {
               </button>
               {paymentMethod === "card" && (
                 <div className="border-t p-4 space-y-3">
-                  <input type="text" placeholder="Card Number" value={cardNumber} onChange={(e) => setCardNumber(e.target.value.replace(/\D/g, "").slice(0, 16))} maxLength={16} className="w-full px-4 py-3 border rounded-lg focus:outline-none focus:ring-2 focus:ring-pink-500" />
-                  <input type="text" placeholder="Cardholder Name" value={cardName} onChange={(e) => setCardName(e.target.value)} className="w-full px-4 py-3 border rounded-lg focus:outline-none focus:ring-2 focus:ring-pink-500" />
+                  <input type="text" placeholder="Card Number" value={cardNumber}
+                    onChange={(e) => setCardNumber(e.target.value.replace(/\D/g, "").slice(0, 16))}
+                    maxLength={16} className="w-full px-4 py-3 border rounded-lg focus:outline-none focus:ring-2 focus:ring-pink-500" />
+                  <input type="text" placeholder="Cardholder Name" value={cardName}
+                    onChange={(e) => setCardName(e.target.value)}
+                    className="w-full px-4 py-3 border rounded-lg focus:outline-none focus:ring-2 focus:ring-pink-500" />
                   <div className="grid grid-cols-2 gap-3">
-                    <input type="text" placeholder="MM/YY" value={cardExpiry} onChange={(e) => { let v = e.target.value.replace(/\D/g, ""); if (v.length >= 2) v = v.slice(0, 2) + "/" + v.slice(2, 4); setCardExpiry(v); }} maxLength={5} className="px-4 py-3 border rounded-lg focus:outline-none focus:ring-2 focus:ring-pink-500" />
-                    <input type="password" placeholder="CVV" value={cardCVV} onChange={(e) => setCardCVV(e.target.value.replace(/\D/g, "").slice(0, 3))} maxLength={3} className="px-4 py-3 border rounded-lg focus:outline-none focus:ring-2 focus:ring-pink-500" />
+                    <input type="text" placeholder="MM/YY" value={cardExpiry}
+                      onChange={(e) => { let v = e.target.value.replace(/\D/g, ""); if (v.length >= 2) v = v.slice(0, 2) + "/" + v.slice(2, 4); setCardExpiry(v); }}
+                      maxLength={5} className="px-4 py-3 border rounded-lg focus:outline-none focus:ring-2 focus:ring-pink-500" />
+                    <input type="password" placeholder="CVV" value={cardCVV}
+                      onChange={(e) => setCardCVV(e.target.value.replace(/\D/g, "").slice(0, 3))}
+                      maxLength={3} className="px-4 py-3 border rounded-lg focus:outline-none focus:ring-2 focus:ring-pink-500" />
                   </div>
                 </div>
               )}
@@ -271,7 +264,7 @@ export default function PaymentPageContent() {
             </div>
           </div>
 
-          {/* RIGHT COLUMN - Order Summary */}
+          {/* RIGHT — Order Summary */}
           <div className="lg:col-span-1">
             <div className="bg-white rounded-lg shadow-sm border border-gray-200 sticky top-6">
 
@@ -280,7 +273,8 @@ export default function PaymentPageContent() {
                 <h3 className="text-sm font-semibold text-gray-500 mb-3">BOOKING WITH</h3>
                 <div className="flex items-center gap-3">
                   <div className={`w-16 h-16 rounded-full bg-gradient-to-br ${getTierColor(profile.tier)} p-[2px] flex-shrink-0`}>
-                    <div className="w-full h-full rounded-full bg-cover bg-center bg-gray-200" style={{ backgroundImage: `url(${profile.imageUrl || "/placeholder.jpg"})` }} />
+                    <div className="w-full h-full rounded-full bg-cover bg-center bg-gray-200"
+                      style={{ backgroundImage: `url(${profile.imageUrl || "/placeholder.jpg"})` }} />
                   </div>
                   <div className="flex-1 min-w-0">
                     <h3 className="font-bold text-gray-900 truncate">{profile.name}</h3>
@@ -292,25 +286,18 @@ export default function PaymentPageContent() {
                 </div>
               </div>
 
-              {/* Plan Selection */}
+              {/* Fixed Plan — 10 mins ₹199 */}
               <div className="p-4 border-b">
-                <h3 className="text-sm font-semibold text-gray-500 mb-3">SELECT DURATION</h3>
-                <div className="space-y-2">
-                  {plans[profile.tier].map((plan) => (
-                    <button
-                      key={plan.price}
-                      onClick={() => setSelectedPlan(plan)}
-                      className={`w-full p-3 rounded-lg border-2 transition-all text-left ${selectedPlan?.price === plan.price ? "border-pink-500 bg-pink-50" : "border-gray-200 hover:border-pink-300"}`}
-                    >
-                      <div className="flex items-center justify-between">
-                        <span className="font-semibold text-gray-900">{plan.duration}</span>
-                        <div className="flex items-center gap-2">
-                          <span className="text-lg font-bold text-pink-600">₹{plan.price}</span>
-                          {selectedPlan?.price === plan.price && <FaCheckCircle className="text-pink-500" size={18} />}
-                        </div>
-                      </div>
-                    </button>
-                  ))}
+                <h3 className="text-sm font-semibold text-gray-500 mb-3">SESSION</h3>
+                <div className="w-full p-3 rounded-lg border-2 border-pink-500 bg-pink-50">
+                  <div className="flex items-center justify-between">
+                    <span className="font-semibold text-gray-900">{FIXED_PLAN.duration}</span>
+                    <div className="flex items-center gap-2">
+                      <span className="text-lg font-bold text-pink-600">₹{FIXED_PLAN.price}</span>
+                      <FaCheckCircle className="text-pink-500" size={18} />
+                    </div>
+                  </div>
+                  <p className="text-xs text-gray-500 mt-1">Video call session</p>
                 </div>
               </div>
 
@@ -318,8 +305,8 @@ export default function PaymentPageContent() {
               <div className="p-4 border-b space-y-2">
                 <h3 className="text-sm font-semibold text-gray-500 mb-3">PRICE DETAILS</h3>
                 <div className="flex justify-between text-sm">
-                  <span className="text-gray-600">Session ({selectedPlan?.duration})</span>
-                  <span className="font-medium">₹{selectedPlan?.price}</span>
+                  <span className="text-gray-600">Session ({FIXED_PLAN.duration})</span>
+                  <span className="font-medium">₹{FIXED_PLAN.price}</span>
                 </div>
                 <div className="flex justify-between text-sm">
                   <span className="text-gray-600">Platform Fee</span>
@@ -335,11 +322,11 @@ export default function PaymentPageContent() {
               <div className="p-4 bg-gray-50">
                 <div className="flex justify-between items-center mb-4">
                   <span className="text-lg font-bold text-gray-900">Total Amount</span>
-                  <span className="text-2xl font-bold text-pink-600">₹{selectedPlan?.price}</span>
+                  <span className="text-2xl font-bold text-pink-600">₹{FIXED_PLAN.price}</span>
                 </div>
                 <button
                   onClick={handlePayment}
-                  disabled={processing || !selectedPlan}
+                  disabled={processing}
                   className="w-full bg-gradient-to-r from-pink-500 to-pink-600 hover:from-pink-600 hover:to-pink-700 text-white text-base font-bold py-3 rounded-lg transition-all hover:scale-105 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100 shadow-lg flex items-center justify-center gap-2"
                 >
                   {processing ? (
@@ -350,7 +337,7 @@ export default function PaymentPageContent() {
                   ) : (
                     <>
                       <FaLock size={16} />
-                      Pay ₹{selectedPlan?.price}
+                      Pay ₹{FIXED_PLAN.price}
                     </>
                   )}
                 </button>
