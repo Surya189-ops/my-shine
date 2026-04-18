@@ -11,13 +11,16 @@ import {
 import { useDarkMode } from "@/app/contexts/DarkModeContext";
 
 const COUNTRIES = [
-  { value: "korea", label: "🇰🇷 Korea" },
-  { value: "japan", label: "🇯🇵 Japan" },
-  { value: "brazil", label: "🌎 Latin — Brazil" },
-  { value: "colombia", label: "🌎 Latin — Colombia" },
+  { value: "korea",     label: "🇰🇷 Korea" },
+  { value: "japan",     label: "🇯🇵 Japan" },
+  { value: "brazil",    label: "🌎 Latin — Brazil" },
+  { value: "colombia",  label: "🌎 Latin — Colombia" },
   { value: "venezuela", label: "🌎 Latin — Venezuela" },
   { value: "argentina", label: "🌎 Latin — Argentina" },
 ];
+
+// IP country codes that are allowed to apply to homepage
+const HOMEPAGE_COUNTRY_CODES = ["JP", "KR", "BR", "CO", "VE", "AR"];
 
 export default function ProfilePage() {
   const router = useRouter();
@@ -39,6 +42,10 @@ export default function ProfilePage() {
   const [verifyUploading, setVerifyUploading] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
 
+  // IP-based: can this user apply to homepage?
+  const [canApplyToHomepage, setCanApplyToHomepage] = useState(false);
+  const [locationChecked, setLocationChecked] = useState(false);
+
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const verifyFileInputRef = useRef<HTMLInputElement | null>(null);
   const menuRef = useRef<HTMLDivElement | null>(null);
@@ -47,6 +54,17 @@ export default function ProfilePage() {
     typeof window !== "undefined"
       ? JSON.parse(localStorage.getItem("myshine_user") || "{}")
       : null;
+
+  // Detect user's country via IP on mount
+  useEffect(() => {
+    fetch("/api/detect-country")
+      .then((res) => res.json())
+      .then((data) => {
+        setCanApplyToHomepage(data.canApplyToHomepage === true);
+      })
+      .catch(() => setCanApplyToHomepage(false))
+      .finally(() => setLocationChecked(true));
+  }, []);
 
   useEffect(() => {
     if (!user?.loggedIn) router.replace("/login");
@@ -67,7 +85,10 @@ export default function ProfilePage() {
           setCountry(p.country || "");
           setIsEditing(false);
           if (p._id && !user.profileId) {
-            localStorage.setItem("myshine_user", JSON.stringify({ ...user, profileId: p._id, name: p.name }));
+            localStorage.setItem(
+              "myshine_user",
+              JSON.stringify({ ...user, profileId: p._id, name: p.name })
+            );
           }
         } else {
           setIsEditing(true);
@@ -77,7 +98,8 @@ export default function ProfilePage() {
 
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
-      if (menuRef.current && !menuRef.current.contains(e.target as Node)) setMenuOpen(false);
+      if (menuRef.current && !menuRef.current.contains(e.target as Node))
+        setMenuOpen(false);
     };
     if (menuOpen) document.addEventListener("mousedown", handleClickOutside);
     return () => document.removeEventListener("mousedown", handleClickOutside);
@@ -157,17 +179,35 @@ export default function ProfilePage() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          userId: user.id, name, age: Number(age), bio, gender, country,
+          userId: user.id,
+          name,
+          age: Number(age),
+          bio,
+          gender,
+          country,
           isCameraVerified: profile?.isCameraVerified || false,
         }),
       });
       const data = await res.json();
       if (data.success) {
-        localStorage.setItem("myshine_user", JSON.stringify({ ...user, profileId: data.profile._id, name: data.profile.name }));
+        localStorage.setItem(
+          "myshine_user",
+          JSON.stringify({ ...user, profileId: data.profile._id, name: data.profile.name })
+        );
         setProfile(data.profile);
         setIsEditing(false);
-        alert("Profile saved successfully!");
-      } else alert(data.message || "Failed to save profile");
+
+        if (canApplyToHomepage) {
+          // Japan / Korea / Latin users — stay on profile page, show Apply to Homepage
+          alert("Profile saved successfully!");
+        } else {
+          // All other countries (India etc.) — redirect to homepage
+          alert("Profile saved! Taking you to the homepage.");
+          router.replace("/");
+        }
+      } else {
+        alert(data.message || "Failed to save profile");
+      }
     } catch { alert("Something went wrong"); }
     finally { setLoading(false); }
   };
@@ -178,7 +218,10 @@ export default function ProfilePage() {
     router.replace("/login");
   };
 
+  // Only shown to users from Japan / Korea / Latin countries
   const renderVerificationStatus = () => {
+    if (!locationChecked || !canApplyToHomepage) return null;
+
     const status = profile?.verificationStatus || "none";
 
     if (status === "approved") return (
@@ -219,6 +262,7 @@ export default function ProfilePage() {
       </div>
     );
 
+    // status === "none" and profile exists
     if (profile?._id) return (
       <button
         onClick={() => setShowVerifyModal(true)}
@@ -231,10 +275,12 @@ export default function ProfilePage() {
     return null;
   };
 
-  const inputClass = "w-full mt-1 p-3 border border-gray-200 dark:border-gray-600 rounded-xl focus:outline-none focus:ring-2 focus:ring-pink-500 bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100 placeholder-gray-400 dark:placeholder-gray-500";
+  const inputClass =
+    "w-full mt-1 p-3 border border-gray-200 dark:border-gray-600 rounded-xl focus:outline-none focus:ring-2 focus:ring-pink-500 bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100 placeholder-gray-400 dark:placeholder-gray-500";
   const labelClass = "text-sm font-medium text-gray-600 dark:text-gray-400";
 
-  const countryLabel = COUNTRIES.find((c) => c.value === country)?.label ||
+  const countryLabel =
+    COUNTRIES.find((c) => c.value === country)?.label ||
     (country ? country.charAt(0).toUpperCase() + country.slice(1) : "—");
 
   return (
@@ -323,7 +369,9 @@ export default function ProfilePage() {
               <input type="file" accept="image/*" ref={fileInputRef} onChange={handleImageSelect} className="hidden" />
 
               {profile?.verificationStatus === "approved" && (
-                <div className="absolute bottom-1 right-1 bg-green-500 text-white w-6 h-6 rounded-full flex items-center justify-center text-sm">✓</div>
+                <div className="absolute bottom-1 right-1 bg-green-500 text-white w-6 h-6 rounded-full flex items-center justify-center text-sm">
+                  ✓
+                </div>
               )}
 
               <button
@@ -350,10 +398,10 @@ export default function ProfilePage() {
           {!isEditing && profile ? (
             <div className="space-y-3 mb-6">
               {[
-                { label: "Name", value: name },
-                { label: "Age", value: age },
-                { label: "Gender", value: gender ? gender.charAt(0).toUpperCase() + gender.slice(1) : "—" },
-                { label: "Bio", value: bio || "—" },
+                { label: "Name",    value: name },
+                { label: "Age",     value: age },
+                { label: "Gender",  value: gender ? gender.charAt(0).toUpperCase() + gender.slice(1) : "—" },
+                { label: "Bio",     value: bio || "—" },
                 { label: "Country", value: countryLabel },
               ].map((item) => (
                 <div key={item.label} className="flex flex-col">
@@ -377,12 +425,24 @@ export default function ProfilePage() {
             <div className="space-y-4 mb-4">
               <div>
                 <label className={labelClass}>Name *</label>
-                <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Your name" className={inputClass} />
+                <input
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                  placeholder="Your name"
+                  className={inputClass}
+                />
               </div>
 
               <div>
                 <label className={labelClass}>Age *</label>
-                <input type="number" value={age} onChange={(e) => setAge(e.target.value)} placeholder="Your age" min="18" className={inputClass} />
+                <input
+                  type="number"
+                  value={age}
+                  onChange={(e) => setAge(e.target.value)}
+                  placeholder="Your age"
+                  min="18"
+                  className={inputClass}
+                />
               </div>
 
               <div>
@@ -397,14 +457,22 @@ export default function ProfilePage() {
 
               <div>
                 <label className={labelClass}>Bio</label>
-                <textarea rows={3} value={bio} onChange={(e) => setBio(e.target.value)} placeholder="Tell us about yourself..." className={inputClass + " resize-none"} />
+                <textarea
+                  rows={3}
+                  value={bio}
+                  onChange={(e) => setBio(e.target.value)}
+                  placeholder="Tell us about yourself..."
+                  className={inputClass + " resize-none"}
+                />
               </div>
 
               <div>
                 <label className={labelClass}>Country</label>
                 <select value={country} onChange={(e) => setCountry(e.target.value)} className={inputClass}>
                   <option value="">Select country</option>
-                  {COUNTRIES.map((c) => <option key={c.value} value={c.value}>{c.label}</option>)}
+                  {COUNTRIES.map((c) => (
+                    <option key={c.value} value={c.value}>{c.label}</option>
+                  ))}
                 </select>
               </div>
 
@@ -427,10 +495,11 @@ export default function ProfilePage() {
             </div>
           )}
 
-          {/* APPLY TO HOMEPAGE */}
+          {/* APPLY TO HOMEPAGE — only for Japan / Korea / Latin users */}
           <div className="mt-2">
             {renderVerificationStatus()}
           </div>
+
         </div>
       </div>
 
@@ -439,7 +508,6 @@ export default function ProfilePage() {
         <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 px-4">
           <div className="bg-white dark:bg-gray-800 rounded-2xl p-6 w-full max-w-sm transition-colors duration-300">
 
-            {/* MODAL HEADER */}
             <div className="flex items-center justify-between mb-5">
               <h3 className="font-bold text-gray-800 dark:text-gray-100 text-lg">Apply to Homepage</h3>
               <button onClick={() => { setShowVerifyModal(false); setVerifyPhoto(""); setVerifyPhone(""); }}>
@@ -447,7 +515,6 @@ export default function ProfilePage() {
               </button>
             </div>
 
-            {/* NAME (read-only from profile) */}
             <div className="mb-4">
               <label className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-1 block">
                 Name
@@ -457,7 +524,6 @@ export default function ProfilePage() {
               </div>
             </div>
 
-            {/* PHONE NUMBER */}
             <div className="mb-4">
               <label className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-1 block">
                 Phone Number *
@@ -471,7 +537,6 @@ export default function ProfilePage() {
               />
             </div>
 
-            {/* VERIFICATION PHOTO */}
             <div className="mb-5">
               <label className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-1 block">
                 Verification Photo *
@@ -508,7 +573,6 @@ export default function ProfilePage() {
               />
             </div>
 
-            {/* SUBMIT */}
             <button
               onClick={handleSubmitVerification}
               disabled={!verifyPhoto || !verifyPhone.trim() || verifyUploading}
