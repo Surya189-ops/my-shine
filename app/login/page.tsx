@@ -9,7 +9,7 @@ type Step = "home" | "signup-email" | "signup-otp" | "login-email";
 export default function LoginPage() {
   const router = useRouter();
   const { data: session, status } = useSession();
-  const googleLoginHandled = useRef(false); // prevent double-firing
+  const googleLoginHandled = useRef(false);
 
   const [step, setStep] = useState<Step>("home");
   const [email, setEmail] = useState("");
@@ -23,12 +23,9 @@ export default function LoginPage() {
   const [resendTimer, setResendTimer] = useState(0);
 
   useEffect(() => {
-    // Only run when session is fully loaded
     if (status !== "authenticated" || !session?.user) return;
-    // Don't run if already handled
     if (googleLoginHandled.current) return;
 
-    // If user explicitly logged out, sign them out of Google too
     const wasLoggedOut = localStorage.getItem("myshine_logged_out");
     if (wasLoggedOut === "true") {
       localStorage.removeItem("myshine_logged_out");
@@ -46,17 +43,17 @@ export default function LoginPage() {
     try {
       let userId = session.user.id;
 
-      // If userId is missing from session (DB was slow during JWT callback),
-      // look up the user by email via a dedicated API endpoint
       if (!userId) {
+        // Step 1: try lookup by email
         const lookupRes = await fetch(
           `/api/auth/user-by-email?email=${encodeURIComponent(session.user.email)}`
         );
         const lookupData = await lookupRes.json();
+
         if (lookupData.success && lookupData.userId) {
           userId = lookupData.userId;
         } else {
-          // User truly not in DB yet — create them now
+          // Step 2: create user
           const createRes = await fetch("/api/auth/ensure-google-user", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
@@ -67,17 +64,19 @@ export default function LoginPage() {
             }),
           });
           const createData = await createRes.json();
-          if (createData.success) {
+
+          if (createData.success && createData.userId) {
             userId = createData.userId;
           } else {
-            setError("Login failed. Please try again.");
+            // Show actual error for debugging
+            setError(createData.message || "Failed to create account. Please try again.");
             googleLoginHandled.current = false;
             return;
           }
         }
       }
 
-      // Now fetch profile
+      // Fetch profile
       const profileRes = await fetch(`/api/profile?userId=${userId}`);
       const profileData = await profileRes.json();
 
@@ -92,7 +91,6 @@ export default function LoginPage() {
         }));
         router.push("/");
       } else {
-        // No profile yet — go create one
         localStorage.setItem("myshine_user", JSON.stringify({
           id: userId,
           email: session.user.email,
@@ -102,9 +100,9 @@ export default function LoginPage() {
         }));
         router.push("/profile");
       }
-    } catch (err) {
+    } catch (err: any) {
       console.error("Google session error:", err);
-      setError("Something went wrong during login. Please try again.");
+      setError(`Login error: ${err.message}. Please try again.`);
       googleLoginHandled.current = false;
     }
   };
@@ -216,7 +214,7 @@ export default function LoginPage() {
 
   const inputClass = "w-full px-4 py-3 border border-gray-200 dark:border-gray-600 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-pink-500 bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100 placeholder-gray-400 dark:placeholder-gray-500";
 
-  // Show loading spinner while Google session is being processed
+  // Show spinner while Google is processing
   if (status === "loading" || (status === "authenticated" && !error)) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-pink-50 dark:bg-gray-900">
@@ -236,7 +234,7 @@ export default function LoginPage() {
         <p className="text-center text-gray-400 dark:text-gray-500 text-sm mb-6">Find your perfect match</p>
 
         {error && (
-          <div className="bg-red-50 dark:bg-red-900/30 border border-red-200 dark:border-red-700 text-red-600 dark:text-red-400 text-sm px-4 py-2 rounded-lg mb-4">
+          <div className="bg-red-50 dark:bg-red-900/30 border border-red-200 dark:border-red-700 text-red-600 dark:text-red-400 text-sm px-4 py-2 rounded-lg mb-4 break-words">
             {error}
           </div>
         )}
@@ -260,16 +258,12 @@ export default function LoginPage() {
               <span className="text-xs text-gray-400 dark:text-gray-500">or</span>
               <div className="flex-1 h-px bg-gray-200 dark:bg-gray-600" />
             </div>
-            <button
-              onClick={() => { setStep("signup-email"); clearError(); }}
-              className="w-full bg-pink-500 text-white py-3 rounded-xl font-semibold hover:bg-pink-600 transition"
-            >
+            <button onClick={() => { setStep("signup-email"); clearError(); }}
+              className="w-full bg-pink-500 text-white py-3 rounded-xl font-semibold hover:bg-pink-600 transition">
               Sign Up with Email
             </button>
-            <button
-              onClick={() => { setStep("login-email"); clearError(); }}
-              className="w-full border-2 border-pink-500 text-pink-500 py-3 rounded-xl font-semibold hover:bg-pink-50 dark:hover:bg-pink-900/20 transition"
-            >
+            <button onClick={() => { setStep("login-email"); clearError(); }}
+              className="w-full border-2 border-pink-500 text-pink-500 py-3 rounded-xl font-semibold hover:bg-pink-50 dark:hover:bg-pink-900/20 transition">
               Log In
             </button>
           </div>
@@ -332,9 +326,7 @@ export default function LoginPage() {
               <p className="text-sm text-gray-600 dark:text-gray-400 mb-4">
                 You must be 18 or older to use My Shine. You agree to treat all users with respect. Any misuse, harassment, or inappropriate behavior will result in permanent account suspension.
               </p>
-              <button onClick={() => setShowTerms(false)} className="w-full bg-pink-500 text-white py-2 rounded-xl font-semibold">
-                I Understand
-              </button>
+              <button onClick={() => setShowTerms(false)} className="w-full bg-pink-500 text-white py-2 rounded-xl font-semibold">I Understand</button>
             </div>
           </div>
         )}
