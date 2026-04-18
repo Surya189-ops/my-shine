@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { signIn, signOut, useSession } from "next-auth/react";
 
@@ -9,6 +9,7 @@ type Step = "home" | "signup-email" | "signup-otp" | "login-email";
 export default function LoginPage() {
   const router = useRouter();
   const { data: session, status } = useSession();
+  const googleLoginHandled = useRef(false); // prevent double-firing
 
   const [step, setStep] = useState<Step>("home");
   const [email, setEmail] = useState("");
@@ -21,36 +22,62 @@ export default function LoginPage() {
   const [error, setError] = useState("");
   const [resendTimer, setResendTimer] = useState(0);
 
-  // Check if user explicitly logged out — if so, sign out Google session too
   useEffect(() => {
-    const userStr = localStorage.getItem("myshine_user");
-    const wasLoggedOut = localStorage.getItem("myshine_logged_out");
+    // Only run when session is fully loaded
+    if (status !== "authenticated" || !session?.user) return;
+    // Don't run if already handled
+    if (googleLoginHandled.current) return;
 
-    if (wasLoggedOut === "true" && session) {
-      // Clear the flag and sign out of NextAuth Google session
+    // If user explicitly logged out, sign them out of Google too
+    const wasLoggedOut = localStorage.getItem("myshine_logged_out");
+    if (wasLoggedOut === "true") {
       localStorage.removeItem("myshine_logged_out");
       signOut({ redirect: false });
       return;
     }
 
-    // If NextAuth Google session exists AND user hasn't explicitly logged out,
-    // auto-login them
-    if (session?.user && !wasLoggedOut) {
-      handleGoogleSessionLogin();
-    }
-  }, [session]);
+    googleLoginHandled.current = true;
+    handleGoogleSessionLogin();
+  }, [status, session]);
 
   const handleGoogleSessionLogin = async () => {
-    if (!session?.user) return;
-    try {
-      // If session doesn't have userId yet (DB was slow), retry fetch by email
-      const userId = session.user.id;
+    if (!session?.user?.email) return;
 
+    try {
+      let userId = session.user.id;
+
+      // If userId is missing from session (DB was slow during JWT callback),
+      // look up the user by email via a dedicated API endpoint
       if (!userId) {
-        // userId not in session yet — wait for next render
-        return;
+        const lookupRes = await fetch(
+          `/api/auth/user-by-email?email=${encodeURIComponent(session.user.email)}`
+        );
+        const lookupData = await lookupRes.json();
+        if (lookupData.success && lookupData.userId) {
+          userId = lookupData.userId;
+        } else {
+          // User truly not in DB yet — create them now
+          const createRes = await fetch("/api/auth/ensure-google-user", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              email: session.user.email,
+              name: session.user.name,
+              image: session.user.image,
+            }),
+          });
+          const createData = await createRes.json();
+          if (createData.success) {
+            userId = createData.userId;
+          } else {
+            setError("Login failed. Please try again.");
+            googleLoginHandled.current = false;
+            return;
+          }
+        }
       }
 
+      // Now fetch profile
       const profileRes = await fetch(`/api/profile?userId=${userId}`);
       const profileData = await profileRes.json();
 
@@ -65,6 +92,7 @@ export default function LoginPage() {
         }));
         router.push("/");
       } else {
+        // No profile yet — go create one
         localStorage.setItem("myshine_user", JSON.stringify({
           id: userId,
           email: session.user.email,
@@ -76,6 +104,8 @@ export default function LoginPage() {
       }
     } catch (err) {
       console.error("Google session error:", err);
+      setError("Something went wrong during login. Please try again.");
+      googleLoginHandled.current = false;
     }
   };
 
@@ -186,6 +216,18 @@ export default function LoginPage() {
 
   const inputClass = "w-full px-4 py-3 border border-gray-200 dark:border-gray-600 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-pink-500 bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100 placeholder-gray-400 dark:placeholder-gray-500";
 
+  // Show loading spinner while Google session is being processed
+  if (status === "loading" || (status === "authenticated" && !error)) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-pink-50 dark:bg-gray-900">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-4 border-pink-500 border-t-transparent mx-auto mb-4" />
+          <p className="text-gray-500 dark:text-gray-400 text-sm">Signing you in...</p>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen flex items-center justify-center bg-pink-50 dark:bg-gray-900 px-4 transition-colors duration-300">
       <div className="w-full max-w-sm bg-white dark:bg-gray-800 rounded-2xl shadow-lg p-6 transition-colors duration-300">
@@ -204,8 +246,8 @@ export default function LoginPage() {
           <div className="flex flex-col gap-3">
             <button
               onClick={() => {
-                // Clear logged-out flag before Google sign in
                 localStorage.removeItem("myshine_logged_out");
+                googleLoginHandled.current = false;
                 signIn("google", { callbackUrl: "/login" });
               }}
               className="w-full flex items-center justify-center gap-3 border-2 border-gray-200 dark:border-gray-600 py-3 rounded-xl font-semibold text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 transition"
