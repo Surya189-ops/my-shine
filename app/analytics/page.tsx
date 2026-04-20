@@ -20,7 +20,7 @@ type AnalyticsData = {
 export default function AnalyticsPage() {
   const router = useRouter();
 
-  const [allowed, setAllowed] = useState<boolean | null>(null); // null = loading
+  const [allowed, setAllowed] = useState<boolean | null>(null);
   const [analytics, setAnalytics] = useState<AnalyticsData | null>(null);
   const [showWithdrawModal, setShowWithdrawModal] = useState(false);
   const [withdrawAmount, setWithdrawAmount] = useState("");
@@ -28,7 +28,6 @@ export default function AnalyticsPage() {
   const [withdrawAccount, setWithdrawAccount] = useState("");
   const [withdrawing, setWithdrawing] = useState(false);
 
-  /* ── Check if user's country is allowed ── */
   useEffect(() => {
     fetch("/api/detect-country")
       .then((r) => r.json())
@@ -36,10 +35,8 @@ export default function AnalyticsPage() {
       .catch(() => setAllowed(false));
   }, []);
 
-  /* ── Load analytics once allowed ── */
   useEffect(() => {
     if (!allowed) return;
-
     const userStr = localStorage.getItem("myshine_user");
     if (!userStr) return;
     const user = JSON.parse(userStr);
@@ -48,76 +45,41 @@ export default function AnalyticsPage() {
     fetch(`/api/analytics?profileId=${user.profileId}`)
       .then((r) => r.json())
       .then((data) => {
-        if (data.success) {
-          setAnalytics(data.analytics);
-        } else {
-          // Fallback mock data if API not yet built
-          setAnalytics({
-            totalEarnings: 0,
-            thisMonthEarnings: 0,
-            totalConnections: 0,
-            totalMessages: 0,
-            profileViews: 0,
-            withdrawableBalance: 0,
-            transactions: [],
-          });
-        }
+        if (data.success) setAnalytics(data.analytics);
+        else setAnalytics({ totalEarnings: 0, thisMonthEarnings: 0, totalConnections: 0, totalMessages: 0, profileViews: 0, withdrawableBalance: 0, transactions: [] });
       })
-      .catch(() => {
-        setAnalytics({
-          totalEarnings: 0,
-          thisMonthEarnings: 0,
-          totalConnections: 0,
-          totalMessages: 0,
-          profileViews: 0,
-          withdrawableBalance: 0,
-          transactions: [],
-        });
-      });
+      .catch(() => setAnalytics({ totalEarnings: 0, thisMonthEarnings: 0, totalConnections: 0, totalMessages: 0, profileViews: 0, withdrawableBalance: 0, transactions: [] }));
   }, [allowed]);
 
   const handleWithdraw = async () => {
     const amount = parseFloat(withdrawAmount);
     if (!amount || amount <= 0) return alert("Enter a valid amount");
-    if (!analytics || amount > analytics.withdrawableBalance)
-      return alert("Insufficient balance");
+    if (!analytics || amount > analytics.withdrawableBalance) return alert("Insufficient balance");
     if (!withdrawAccount.trim()) return alert("Enter your account details");
 
     setWithdrawing(true);
     try {
       const userStr = localStorage.getItem("myshine_user");
       const user = JSON.parse(userStr || "{}");
-
       const res = await fetch("/api/analytics/withdraw", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          profileId: user.profileId,
-          amount,
-          method: withdrawMethod,
-          account: withdrawAccount,
-        }),
+        body: JSON.stringify({ profileId: user.profileId, amount, method: withdrawMethod, account: withdrawAccount }),
       });
       const data = await res.json();
       if (data.success) {
-        alert(`✅ Withdrawal of $${amount} requested successfully! It will be processed in 2–3 business days.`);
-        setAnalytics((prev) =>
-          prev ? { ...prev, withdrawableBalance: prev.withdrawableBalance - amount } : prev
-        );
+        alert(`✅ Withdrawal of $${amount} requested! Processed in 2–3 business days.`);
+        setAnalytics((prev) => prev ? { ...prev, withdrawableBalance: prev.withdrawableBalance - amount } : prev);
         setShowWithdrawModal(false);
         setWithdrawAmount("");
         setWithdrawAccount("");
       } else {
         alert(data.message || "Withdrawal failed. Please try again.");
       }
-    } catch {
-      alert("Something went wrong. Please try again.");
-    } finally {
-      setWithdrawing(false);
-    }
+    } catch { alert("Something went wrong. Please try again."); }
+    finally { setWithdrawing(false); }
   };
 
-  /* ── Loading state ── */
   if (allowed === null) {
     return (
       <div className="min-h-screen bg-pink-50 dark:bg-gray-900 flex items-center justify-center">
@@ -126,7 +88,6 @@ export default function AnalyticsPage() {
     );
   }
 
-  /* ── Not allowed (India, etc.) ── */
   if (!allowed) {
     return (
       <div className="min-h-screen bg-pink-50 dark:bg-gray-900 transition-colors duration-300 pb-24">
@@ -138,14 +99,11 @@ export default function AnalyticsPage() {
             <h1 className="text-xl font-bold text-gray-800 dark:text-gray-100">Analytics</h1>
           </div>
         </div>
-
         <div className="flex flex-col items-center justify-center min-h-[70vh] px-6 text-center">
           <div className="w-20 h-20 bg-gray-100 dark:bg-gray-700 rounded-full flex items-center justify-center mb-6">
             <FiLock size={36} className="text-gray-400" />
           </div>
-          <h2 className="text-xl font-bold text-gray-800 dark:text-gray-100 mb-3">
-            Analytics Not Available
-          </h2>
+          <h2 className="text-xl font-bold text-gray-800 dark:text-gray-100 mb-3">Analytics Not Available</h2>
           <p className="text-gray-500 dark:text-gray-400 text-sm max-w-xs">
             Analytics and earnings are only available for profiles from Korea, Japan, and Latin countries.
           </p>
@@ -155,13 +113,12 @@ export default function AnalyticsPage() {
     );
   }
 
-  /* ── Allowed — show full analytics ── */
   const statCards = [
-    { icon: FiDollarSign,    label: "Total Earnings",      value: `$${analytics?.totalEarnings?.toFixed(2) ?? "0.00"}`, color: "text-green-500",  bg: "bg-green-50 dark:bg-green-900/20" },
-    { icon: FiTrendingUp,    label: "This Month",          value: `$${analytics?.thisMonthEarnings?.toFixed(2) ?? "0.00"}`, color: "text-blue-500", bg: "bg-blue-50 dark:bg-blue-900/20" },
-    { icon: FiUsers,         label: "Total Connections",   value: analytics?.totalConnections ?? 0, color: "text-purple-500", bg: "bg-purple-50 dark:bg-purple-900/20" },
-    { icon: FiMessageSquare, label: "Total Messages",      value: analytics?.totalMessages ?? 0,    color: "text-pink-500",   bg: "bg-pink-50 dark:bg-pink-900/20" },
-    { icon: FiBarChart2,     label: "Profile Views",       value: analytics?.profileViews ?? 0,     color: "text-orange-500", bg: "bg-orange-50 dark:bg-orange-900/20" },
+    { icon: FiDollarSign,    label: "Total Earnings",    value: `$${analytics?.totalEarnings?.toFixed(2) ?? "0.00"}`,      color: "text-green-500",  bg: "bg-green-50 dark:bg-green-900/20" },
+    { icon: FiTrendingUp,    label: "This Month",         value: `$${analytics?.thisMonthEarnings?.toFixed(2) ?? "0.00"}`,  color: "text-blue-500",   bg: "bg-blue-50 dark:bg-blue-900/20" },
+    { icon: FiUsers,         label: "Connections",        value: analytics?.totalConnections ?? 0,                          color: "text-purple-500", bg: "bg-purple-50 dark:bg-purple-900/20" },
+    { icon: FiMessageSquare, label: "Messages",           value: analytics?.totalMessages ?? 0,                             color: "text-pink-500",   bg: "bg-pink-50 dark:bg-pink-900/20" },
+    { icon: FiBarChart2,     label: "Profile Views",      value: analytics?.profileViews ?? 0,                              color: "text-orange-500", bg: "bg-orange-50 dark:bg-orange-900/20" },
   ];
 
   return (
@@ -179,9 +136,9 @@ export default function AnalyticsPage() {
 
       <div className="max-w-2xl mx-auto px-4 py-6 space-y-6">
 
-        {/* WITHDRAWABLE BALANCE CARD */}
+        {/* BALANCE CARD — label changed from "Earning Available" to just "Available Balance" */}
         <div className="bg-gradient-to-r from-pink-500 to-pink-600 rounded-2xl p-6 text-white shadow-lg">
-          <p className="text-pink-100 text-sm mb-1">Withdrawable Balance</p>
+          <p className="text-pink-100 text-sm mb-1">Available Balance</p>
           <p className="text-4xl font-bold mb-4">
             ${analytics?.withdrawableBalance?.toFixed(2) ?? "0.00"}
           </p>
@@ -201,7 +158,7 @@ export default function AnalyticsPage() {
         <div className="grid grid-cols-2 gap-3">
           {statCards.map(({ icon: Icon, label, value, color, bg }) => (
             <div key={label} className={`${bg} rounded-xl p-4 flex flex-col gap-2`}>
-              <div className={`w-9 h-9 rounded-full bg-white dark:bg-gray-800 flex items-center justify-center shadow-sm`}>
+              <div className="w-9 h-9 rounded-full bg-white dark:bg-gray-800 flex items-center justify-center shadow-sm">
                 <Icon size={18} className={color} />
               </div>
               <p className="text-2xl font-bold text-gray-800 dark:text-gray-100">{value}</p>
@@ -256,58 +213,33 @@ export default function AnalyticsPage() {
               <h3 className="font-bold text-gray-800 dark:text-gray-100 text-lg">Withdraw Funds</h3>
               <button onClick={() => setShowWithdrawModal(false)} className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 text-xl font-bold">✕</button>
             </div>
-
             <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">
               Available: <span className="font-bold text-green-500">${analytics?.withdrawableBalance?.toFixed(2)}</span>
             </p>
-
-            {/* AMOUNT */}
             <div className="mb-4">
               <label className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-1 block">Amount ($)</label>
-              <input
-                type="number"
-                value={withdrawAmount}
-                onChange={(e) => setWithdrawAmount(e.target.value)}
-                placeholder="Enter amount"
-                min="10"
-                max={analytics?.withdrawableBalance}
-                className="w-full p-3 border border-gray-200 dark:border-gray-600 rounded-xl focus:outline-none focus:ring-2 focus:ring-pink-500 bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100 placeholder-gray-400 text-sm"
-              />
+              <input type="number" value={withdrawAmount} onChange={(e) => setWithdrawAmount(e.target.value)} placeholder="Enter amount" min="10" max={analytics?.withdrawableBalance}
+                className="w-full p-3 border border-gray-200 dark:border-gray-600 rounded-xl focus:outline-none focus:ring-2 focus:ring-pink-500 bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100 placeholder-gray-400 text-sm" />
             </div>
-
-            {/* METHOD */}
             <div className="mb-4">
-              <label className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-1 block">Withdrawal Method</label>
-              <select
-                value={withdrawMethod}
-                onChange={(e) => setWithdrawMethod(e.target.value)}
-                className="w-full p-3 border border-gray-200 dark:border-gray-600 rounded-xl focus:outline-none focus:ring-2 focus:ring-pink-500 bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100 text-sm"
-              >
+              <label className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-1 block">Method</label>
+              <select value={withdrawMethod} onChange={(e) => setWithdrawMethod(e.target.value)}
+                className="w-full p-3 border border-gray-200 dark:border-gray-600 rounded-xl focus:outline-none focus:ring-2 focus:ring-pink-500 bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100 text-sm">
                 <option value="bank">Bank Transfer</option>
                 <option value="paypal">PayPal</option>
                 <option value="crypto">Cryptocurrency</option>
               </select>
             </div>
-
-            {/* ACCOUNT DETAILS */}
             <div className="mb-5">
               <label className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-1 block">
                 {withdrawMethod === "bank" ? "Bank Account Number" : withdrawMethod === "paypal" ? "PayPal Email" : "Wallet Address"}
               </label>
-              <input
-                type="text"
-                value={withdrawAccount}
-                onChange={(e) => setWithdrawAccount(e.target.value)}
+              <input type="text" value={withdrawAccount} onChange={(e) => setWithdrawAccount(e.target.value)}
                 placeholder={withdrawMethod === "bank" ? "Account number" : withdrawMethod === "paypal" ? "your@email.com" : "0x..."}
-                className="w-full p-3 border border-gray-200 dark:border-gray-600 rounded-xl focus:outline-none focus:ring-2 focus:ring-pink-500 bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100 placeholder-gray-400 text-sm"
-              />
+                className="w-full p-3 border border-gray-200 dark:border-gray-600 rounded-xl focus:outline-none focus:ring-2 focus:ring-pink-500 bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100 placeholder-gray-400 text-sm" />
             </div>
-
-            <button
-              onClick={handleWithdraw}
-              disabled={withdrawing || !withdrawAmount || !withdrawAccount.trim()}
-              className="w-full py-3 bg-pink-500 text-white rounded-xl font-semibold disabled:opacity-50 hover:bg-pink-600 transition-colors"
-            >
+            <button onClick={handleWithdraw} disabled={withdrawing || !withdrawAmount || !withdrawAccount.trim()}
+              className="w-full py-3 bg-pink-500 text-white rounded-xl font-semibold disabled:opacity-50 hover:bg-pink-600 transition-colors">
               {withdrawing ? "Processing..." : "Confirm Withdrawal"}
             </button>
           </div>

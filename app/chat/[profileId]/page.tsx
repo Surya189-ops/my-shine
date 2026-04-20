@@ -3,11 +3,10 @@
 
 import { useEffect, useState, useRef, useCallback } from "react";
 import { useParams, useRouter } from "next/navigation";
-import { FiArrowLeft, FiSend, FiCheck, FiSearch, FiImage, FiEye, FiVideo } from "react-icons/fi";
+import { FiArrowLeft, FiSend, FiCheck, FiSearch, FiImage, FiEye, FiVideo, FiCopy, FiTrash2, FiEdit2, FiGlobe } from "react-icons/fi";
 import { io, Socket } from "socket.io-client";
 import TypingIndicator from "@/app/components/TypingIndicator";
 import ChatSearch from "@/app/components/ChatSearch";
-import MessageContextMenu from "@/app/components/MessageContextMenu";
 import EditMessageModal from "@/app/components/EditMessageModal";
 import ImagePicker from "@/app/components/ImagePicker";
 import ImageViewer from "@/app/components/ImageViewer";
@@ -73,6 +72,7 @@ export default function ChatPage() {
     url: string; caption?: string; isViewOnce?: boolean; messageId?: string; isSender?: boolean;
   } | null>(null);
   const [videoCall, setVideoCall] = useState<VideoCallState>(null);
+  const [deleteConfirm, setDeleteConfirm] = useState<{ messageId: string } | null>(null);
 
   const socketRef = useRef<Socket | null>(null);
   const bottomRef = useRef<HTMLDivElement | null>(null);
@@ -82,7 +82,6 @@ export default function ChatPage() {
   const isTypingRef = useRef(false);
   const otherTypingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const messageRefs = useRef<{ [key: string]: HTMLDivElement }>({});
-  // Track if we've done the initial scroll so subsequent scrolls are smooth
   const initialScrollDone = useRef(false);
 
   /* ── AUTH ── */
@@ -125,9 +124,8 @@ export default function ChatPage() {
       const socket = io({ path: "/api/socket" });
       socketRef.current = socket;
       socket.emit("join-room", roomId);
-
-      // Online presence — emit own presence and listen for other user
       socket.emit("user-online", { profileId: myProfileId });
+
       socket.on("user-status", (data: { profileId: string; online: boolean }) => {
         if (data.profileId === otherProfileId) setIsOnline(data.online);
       });
@@ -219,10 +217,7 @@ export default function ChatPage() {
     fetch(`/api/chat?myProfileId=${myProfileId}&otherProfileId=${otherProfileId}`)
       .then((r) => r.json())
       .then((d) => {
-        if (d.success) {
-          setMessages(d.messages);
-          markMessagesAsRead(d.messages);
-        }
+        if (d.success) { setMessages(d.messages); markMessagesAsRead(d.messages); }
       })
       .catch(console.error);
   }, [myProfileId, otherProfileId]);
@@ -242,16 +237,14 @@ export default function ChatPage() {
     } catch (err) { console.error("Mark read error:", err); }
   };
 
-  /* ── AUTO SCROLL — instant on load, smooth on new messages ── */
+  /* ── AUTO SCROLL ── */
   useEffect(() => {
     if (!bottomRef.current) return;
     if (!initialScrollDone.current && messages.length > 0) {
-      // First load: jump instantly to bottom (no animation)
       bottomRef.current.scrollIntoView({ behavior: "instant" as ScrollBehavior });
       initialScrollDone.current = true;
       markMessagesAsRead(messages);
     } else if (initialScrollDone.current) {
-      // New message: smooth scroll
       bottomRef.current.scrollIntoView({ behavior: "smooth" });
       markMessagesAsRead(messages);
     }
@@ -267,13 +260,19 @@ export default function ChatPage() {
     }
   }, [dark]);
 
-  /* ── CONTEXT MENU ── */
+  /* ── LONG PRESS / CONTEXT MENU ── */
   const handleLongPress = (e: React.MouseEvent | React.TouchEvent, message: Message) => {
     e.preventDefault();
     if (message.isDeleted || message.isViewOnce) return;
     const x = "touches" in e ? e.touches[0].clientX : e.clientX;
     const y = "touches" in e ? e.touches[0].clientY : e.clientY;
-    setContextMenu({ messageId: message._id, messageText: message.text, messageCreatedAt: message.createdAt, isMine: message.senderProfileId === myProfileId, position: { x, y } });
+    setContextMenu({
+      messageId: message._id,
+      messageText: message.text,
+      messageCreatedAt: message.createdAt,
+      isMine: message.senderProfileId === myProfileId,
+      position: { x, y },
+    });
   };
 
   /* ── EDIT ── */
@@ -309,6 +308,7 @@ export default function ChatPage() {
         }
       } else alert(data.message || "Failed to delete");
     } catch { alert("Failed to delete message"); }
+    setDeleteConfirm(null);
   };
 
   /* ── IMAGE ── */
@@ -352,11 +352,14 @@ export default function ChatPage() {
   const handleSend = async () => {
     if (!newMessage.trim() || !myProfileId) return;
     const text = newMessage.trim();
-    setNewMessage(""); // clear input
+    setNewMessage("");
     stopTyping();
 
-    // Keep focus on input so keyboard stays open on mobile
-    setTimeout(() => inputRef.current?.focus(), 50);
+    // FIX: Keep keyboard open — refocus input after clearing
+    // Use requestAnimationFrame for better mobile compatibility
+    requestAnimationFrame(() => {
+      inputRef.current?.focus();
+    });
 
     try {
       const res = await fetch("/api/chat", {
@@ -441,9 +444,117 @@ export default function ChatPage() {
     );
   };
 
-  /* ── STATUS TEXT ── */
+  /* ── STATUS ── */
   const statusText = isOtherTyping ? "typing..." : isOnline ? "Online" : "Offline";
   const statusColor = isOtherTyping ? "text-pink-400" : isOnline ? "text-green-400" : dark ? "text-gray-500" : "text-gray-400";
+
+  /* ── CUSTOM CONTEXT MENU (fully dark-mode aware, no external component) ── */
+  const renderContextMenu = () => {
+    if (!contextMenu) return null;
+
+    const menuW = 200;
+    const menuH = contextMenu.isMine ? 160 : 120;
+    const left = Math.min(contextMenu.position.x, window.innerWidth - menuW - 10);
+    const top = Math.min(contextMenu.position.y, window.innerHeight - menuH - 10);
+
+    const menuBg  = dark ? "bg-gray-800 border-gray-700" : "bg-white border-gray-200";
+    const itemCls = `w-full flex items-center gap-3 px-4 py-3 text-sm transition-colors`;
+    const textCls = dark ? "text-gray-200 hover:bg-gray-700" : "text-gray-700 hover:bg-gray-50";
+    const redCls  = dark ? "text-red-400 hover:bg-gray-700" : "text-red-500 hover:bg-red-50";
+    const divCls  = dark ? "border-gray-700" : "border-gray-100";
+
+    return (
+      <div className="fixed inset-0 z-50" onClick={() => setContextMenu(null)} onContextMenu={(e) => e.preventDefault()}>
+        <div
+          className={`absolute rounded-2xl shadow-2xl border overflow-hidden ${menuBg}`}
+          style={{ top, left, minWidth: menuW }}
+          onClick={(e) => e.stopPropagation()}
+        >
+          {/* Copy */}
+          {contextMenu.messageText && (
+            <button
+              className={`${itemCls} ${textCls}`}
+              onClick={() => {
+                navigator.clipboard?.writeText(contextMenu.messageText);
+                setContextMenu(null);
+              }}
+            >
+              <FiCopy size={16} />
+              <span>Copy</span>
+            </button>
+          )}
+
+          {/* Edit — only mine & has text */}
+          {contextMenu.isMine && contextMenu.messageText && (
+            <>
+              <div className={`border-t ${divCls}`} />
+              <button
+                className={`${itemCls} ${textCls}`}
+                onClick={() => {
+                  setEditingMessage({ id: contextMenu.messageId, text: contextMenu.messageText });
+                  setContextMenu(null);
+                }}
+              >
+                <FiEdit2 size={16} />
+                <span>Edit</span>
+              </button>
+            </>
+          )}
+
+          {/* Delete */}
+          <div className={`border-t ${divCls}`} />
+          <button
+            className={`${itemCls} ${redCls}`}
+            onClick={() => {
+              setDeleteConfirm({ messageId: contextMenu.messageId });
+              setContextMenu(null);
+            }}
+          >
+            <FiTrash2 size={16} />
+            <span>Delete</span>
+          </button>
+        </div>
+      </div>
+    );
+  };
+
+  /* ── DELETE CONFIRM MODAL ── */
+  const renderDeleteConfirm = () => {
+    if (!deleteConfirm) return null;
+    const msg = messages.find((m) => m._id === deleteConfirm.messageId);
+    const isMine = msg?.senderProfileId === myProfileId;
+
+    return (
+      <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center px-6">
+        <div className={`rounded-2xl p-6 w-full max-w-xs shadow-2xl ${dark ? "bg-gray-800" : "bg-white"}`}>
+          <h3 className={`font-bold text-base mb-1 ${dark ? "text-gray-100" : "text-gray-800"}`}>Delete Message?</h3>
+          <p className={`text-sm mb-5 ${dark ? "text-gray-400" : "text-gray-500"}`}>Choose how you want to delete this message.</p>
+          <div className="flex flex-col gap-2">
+            <button
+              onClick={() => handleDeleteMessage(deleteConfirm.messageId, false)}
+              className={`w-full py-2.5 rounded-xl text-sm font-semibold ${dark ? "bg-gray-700 text-gray-200 hover:bg-gray-600" : "bg-gray-100 text-gray-700 hover:bg-gray-200"} transition-colors`}
+            >
+              Delete for me
+            </button>
+            {isMine && (
+              <button
+                onClick={() => handleDeleteMessage(deleteConfirm.messageId, true)}
+                className="w-full py-2.5 rounded-xl text-sm font-semibold bg-red-500 text-white hover:bg-red-600 transition-colors"
+              >
+                Delete for everyone
+              </button>
+            )}
+            <button
+              onClick={() => setDeleteConfirm(null)}
+              className={`w-full py-2.5 rounded-xl text-sm ${dark ? "text-gray-400 hover:text-gray-200" : "text-gray-400 hover:text-gray-600"} transition-colors`}
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  };
 
   return (
     <div className={`flex flex-col h-screen ${dark ? "bg-gray-900" : "bg-pink-50"}`}>
@@ -477,11 +588,9 @@ export default function ChatPage() {
 
       {isSearchOpen && <ChatSearch messages={messages} onResultClick={handleSearchResultClick} onClose={() => setIsSearchOpen(false)} />}
 
-      {/* MESSAGES — flex-col so newest is at bottom naturally */}
+      {/* MESSAGES */}
       <div className="flex-1 overflow-y-auto px-4 py-3 flex flex-col">
-        {/* Spacer pushes messages to bottom when there are few */}
         <div className="flex-1" />
-
         <div className="flex flex-col gap-3">
           {messages.length === 0 ? (
             <div className={`text-center text-sm ${dark ? "text-gray-500" : "text-gray-400"}`}>
@@ -526,14 +635,12 @@ export default function ChatPage() {
               );
             })
           )}
-
           {isOtherTyping && <div className="flex justify-start"><TypingIndicator /></div>}
-          {/* Scroll anchor */}
           <div ref={bottomRef} />
         </div>
       </div>
 
-      {/* INPUT — flex-shrink-0 so it never disappears */}
+      {/* INPUT */}
       <div className={`flex-shrink-0 flex items-center gap-2 px-3 py-3 border-t ${dark ? "bg-gray-800 border-gray-700" : "bg-white border-gray-200"}`}>
         <button
           onClick={() => setShowImagePicker(true)}
@@ -541,12 +648,23 @@ export default function ChatPage() {
         >
           <FiImage size={22} />
         </button>
+        {/*
+          FIX: Remove key/card/location icons from keyboard toolbar.
+          These are browser/keyboard suggestion bar icons injected by Android Chrome.
+          We use inputMode="text" + autoComplete="off" + autoCorrect="off"
+          to suppress them as much as possible.
+        */}
         <input
           ref={inputRef}
           value={newMessage}
           onChange={(e) => { setNewMessage(e.target.value); handleTyping(); }}
           onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); handleSend(); } }}
           placeholder="Type a message…"
+          inputMode="text"
+          autoComplete="off"
+          autoCorrect="off"
+          autoCapitalize="sentences"
+          spellCheck={false}
           className={`flex-1 px-4 py-2 border rounded-full text-sm focus:outline-none focus:ring-2 focus:ring-pink-500 ${
             dark
               ? "bg-gray-700 border-gray-600 text-gray-100 placeholder-gray-400"
@@ -563,35 +681,11 @@ export default function ChatPage() {
         </button>
       </div>
 
-      {/* CONTEXT MENU — dark mode aware */}
-      {contextMenu && (
-        <div
-          className="fixed inset-0 z-40"
-          onClick={() => setContextMenu(null)}
-          onContextMenu={(e) => e.preventDefault()}
-        >
-          <div
-            className={`absolute rounded-xl shadow-2xl border overflow-hidden min-w-[160px] ${dark ? "bg-gray-800 border-gray-700" : "bg-white border-gray-200"}`}
-            style={{
-              top: Math.min(contextMenu.position.y, window.innerHeight - 200),
-              left: Math.min(contextMenu.position.x, window.innerWidth - 180),
-            }}
-            onClick={(e) => e.stopPropagation()}
-          >
-            <MessageContextMenu
-              messageId={contextMenu.messageId}
-              messageText={contextMenu.messageText}
-              isMine={contextMenu.isMine}
-              messageCreatedAt={contextMenu.messageCreatedAt}
-              onEdit={(id, text) => { setEditingMessage({ id, text }); setContextMenu(null); }}
-              onDelete={(id, forAll) => { handleDeleteMessage(id, forAll); setContextMenu(null); }}
-              onTranslate={() => setContextMenu(null)}
-              onClose={() => setContextMenu(null)}
-              position={contextMenu.position}
-            />
-          </div>
-        </div>
-      )}
+      {/* CUSTOM CONTEXT MENU */}
+      {renderContextMenu()}
+
+      {/* DELETE CONFIRM */}
+      {renderDeleteConfirm()}
 
       {editingMessage && <EditMessageModal messageId={editingMessage.id} currentText={editingMessage.text} onSave={handleEditMessage} onCancel={() => setEditingMessage(null)} />}
       {showImagePicker && <ImagePicker onImageSelect={handleImageSelect} onCancel={() => setShowImagePicker(false)} />}
