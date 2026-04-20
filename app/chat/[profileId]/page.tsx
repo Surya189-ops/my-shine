@@ -1,4 +1,4 @@
-// app/chat/[profileId]/page.tsx - Updated with Video Call + Dark Mode Fix
+// app/chat/[profileId]/page.tsx
 "use client";
 
 import { useEffect, useState, useRef, useCallback } from "react";
@@ -35,11 +35,7 @@ type Message = {
   viewedAt?: string | null;
 };
 
-type Profile = {
-  _id: string;
-  name: string;
-  imageUrl?: string;
-};
+type Profile = { _id: string; name: string; imageUrl?: string; };
 
 type ContextMenuState = {
   messageId: string;
@@ -67,17 +63,14 @@ export default function ChatPage() {
   const [newMessage, setNewMessage] = useState("");
   const [myProfileId, setMyProfileId] = useState<string>("");
   const [myName, setMyName] = useState<string>("");
+  const [isOnline, setIsOnline] = useState(false);
   const [isOtherTyping, setIsOtherTyping] = useState(false);
   const [isSearchOpen, setIsSearchOpen] = useState(false);
   const [contextMenu, setContextMenu] = useState<ContextMenuState>(null);
   const [editingMessage, setEditingMessage] = useState<{ id: string; text: string } | null>(null);
   const [showImagePicker, setShowImagePicker] = useState(false);
   const [viewingImage, setViewingImage] = useState<{
-    url: string;
-    caption?: string;
-    isViewOnce?: boolean;
-    messageId?: string;
-    isSender?: boolean;
+    url: string; caption?: string; isViewOnce?: boolean; messageId?: string; isSender?: boolean;
   } | null>(null);
   const [videoCall, setVideoCall] = useState<VideoCallState>(null);
 
@@ -89,22 +82,20 @@ export default function ChatPage() {
   const isTypingRef = useRef(false);
   const otherTypingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const messageRefs = useRef<{ [key: string]: HTMLDivElement }>({});
+  // Track if we've done the initial scroll so subsequent scrolls are smooth
+  const initialScrollDone = useRef(false);
 
-  /* -------- AUTH GUARD -------- */
+  /* ── AUTH ── */
   useEffect(() => {
     const userStr = localStorage.getItem("myshine_user");
     if (!userStr) { router.replace("/login"); return; }
     const user = JSON.parse(userStr);
-    if (!user.profileId) {
-      alert("Profile not found. Please create a profile first.");
-      router.replace("/profile/create");
-      return;
-    }
+    if (!user.profileId) { alert("Profile not found."); router.replace("/profile"); return; }
     setMyProfileId(user.profileId);
     setMyName(user.name || "User");
   }, [router]);
 
-  /* -------- TYPING HANDLERS -------- */
+  /* ── TYPING ── */
   const startTyping = useCallback(() => {
     if (!socketRef.current || !roomIdRef.current || isTypingRef.current) return;
     socketRef.current.emit("typing-start", { roomId: roomIdRef.current, profileId: myProfileId, name: myName });
@@ -123,7 +114,7 @@ export default function ChatPage() {
     typingTimeoutRef.current = setTimeout(() => stopTyping(), 2000);
   }, [startTyping, stopTyping]);
 
-  /* -------- SOCKET SETUP -------- */
+  /* ── SOCKET ── */
   useEffect(() => {
     if (!myProfileId || socketRef.current) return;
     const roomId = [myProfileId, otherProfileId].sort().join("_");
@@ -134,6 +125,12 @@ export default function ChatPage() {
       const socket = io({ path: "/api/socket" });
       socketRef.current = socket;
       socket.emit("join-room", roomId);
+
+      // Online presence — emit own presence and listen for other user
+      socket.emit("user-online", { profileId: myProfileId });
+      socket.on("user-status", (data: { profileId: string; online: boolean }) => {
+        if (data.profileId === otherProfileId) setIsOnline(data.online);
+      });
 
       socket.off("receive-message").on("receive-message", (data: any) => {
         setIsOtherTyping(false);
@@ -162,10 +159,9 @@ export default function ChatPage() {
       });
 
       socket.off("message-deleted").on("message-deleted", (data: any) => {
-        if (data.deletedForEveryone) {
+        if (data.deletedForEveryone)
           setMessages((prev) => prev.map((m) => m._id === data.messageId
             ? { ...m, isDeleted: true, deletedForEveryone: true } : m));
-        }
       });
 
       socket.off("view-once-viewed").on("view-once-viewed", (data: any) => {
@@ -203,64 +199,75 @@ export default function ChatPage() {
       stopTyping();
       if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
       if (otherTypingTimeoutRef.current) clearTimeout(otherTypingTimeoutRef.current);
+      socketRef.current?.emit("user-offline", { profileId: myProfileId });
       socketRef.current?.disconnect();
       socketRef.current = null;
     };
   }, [myProfileId, otherProfileId, stopTyping]);
 
-  /* -------- FETCH PROFILE -------- */
+  /* ── FETCH PROFILE ── */
   useEffect(() => {
     fetch(`/api/profile/by-id?profileId=${otherProfileId}`)
-      .then((res) => res.json())
-      .then((data) => { if (data.success) setProfile(data.profile); })
+      .then((r) => r.json())
+      .then((d) => { if (d.success) setProfile(d.profile); })
       .catch(console.error);
   }, [otherProfileId]);
 
-  /* -------- LOAD CHAT HISTORY -------- */
+  /* ── LOAD HISTORY ── */
   useEffect(() => {
     if (!myProfileId) return;
     fetch(`/api/chat?myProfileId=${myProfileId}&otherProfileId=${otherProfileId}`)
-      .then((res) => res.json())
-      .then((data) => { if (data.success) { setMessages(data.messages); markMessagesAsRead(data.messages); } })
+      .then((r) => r.json())
+      .then((d) => {
+        if (d.success) {
+          setMessages(d.messages);
+          markMessagesAsRead(d.messages);
+        }
+      })
       .catch(console.error);
   }, [myProfileId, otherProfileId]);
 
-  /* -------- MARK MESSAGES AS READ -------- */
+  /* ── MARK READ ── */
   const markMessagesAsRead = async (msgs: Message[]) => {
     const unreadIds = msgs.filter((m) => m.receiverProfileId === myProfileId && !m.read && !m.isDeleted).map((m) => m._id);
-    if (unreadIds.length === 0) return;
+    if (!unreadIds.length) return;
     try {
       await fetch("/api/chat/mark-read", {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ messageIds: unreadIds, myProfileId }),
       });
-      setMessages((prev) => prev.map((m) => (unreadIds.includes(m._id) ? { ...m, read: true } : m)));
-      if (socketRef.current) socketRef.current.emit("messages-read", { roomId: roomIdRef.current, messageIds: unreadIds });
+      setMessages((prev) => prev.map((m) => unreadIds.includes(m._id) ? { ...m, read: true } : m));
+      socketRef.current?.emit("messages-read", { roomId: roomIdRef.current, messageIds: unreadIds });
       window.dispatchEvent(new Event("refreshMessageBadge"));
     } catch (err) { console.error("Mark read error:", err); }
   };
 
-  /* -------- AUTO SCROLL -------- */
-  const lastMessageCountRef = useRef(0);
+  /* ── AUTO SCROLL — instant on load, smooth on new messages ── */
   useEffect(() => {
-    if (messages.length > lastMessageCountRef.current || isOtherTyping) {
-      bottomRef.current?.scrollIntoView({ behavior: "smooth" });
-      lastMessageCountRef.current = messages.length;
-      if (messages.length > 0) markMessagesAsRead(messages);
+    if (!bottomRef.current) return;
+    if (!initialScrollDone.current && messages.length > 0) {
+      // First load: jump instantly to bottom (no animation)
+      bottomRef.current.scrollIntoView({ behavior: "instant" as ScrollBehavior });
+      initialScrollDone.current = true;
+      markMessagesAsRead(messages);
+    } else if (initialScrollDone.current) {
+      // New message: smooth scroll
+      bottomRef.current.scrollIntoView({ behavior: "smooth" });
+      markMessagesAsRead(messages);
     }
   }, [messages, isOtherTyping]);
 
-  /* -------- SEARCH RESULT HANDLER -------- */
+  /* ── SEARCH ── */
   const handleSearchResultClick = useCallback((messageId: string) => {
     const el = messageRefs.current[messageId];
     if (el) {
       el.scrollIntoView({ behavior: "smooth", block: "center" });
-      el.classList.add("bg-yellow-100");
-      setTimeout(() => el.classList.remove("bg-yellow-100"), 2000);
+      el.classList.add(dark ? "bg-yellow-900/40" : "bg-yellow-100");
+      setTimeout(() => el.classList.remove(dark ? "bg-yellow-900/40" : "bg-yellow-100"), 2000);
     }
-  }, []);
+  }, [dark]);
 
-  /* -------- CONTEXT MENU -------- */
+  /* ── CONTEXT MENU ── */
   const handleLongPress = (e: React.MouseEvent | React.TouchEvent, message: Message) => {
     e.preventDefault();
     if (message.isDeleted || message.isViewOnce) return;
@@ -269,7 +276,7 @@ export default function ChatPage() {
     setContextMenu({ messageId: message._id, messageText: message.text, messageCreatedAt: message.createdAt, isMine: message.senderProfileId === myProfileId, position: { x, y } });
   };
 
-  /* -------- EDIT MESSAGE -------- */
+  /* ── EDIT ── */
   const handleEditMessage = async (messageId: string, newText: string) => {
     try {
       const res = await fetch("/api/chat/edit", {
@@ -281,11 +288,11 @@ export default function ChatPage() {
         setMessages((prev) => prev.map((m) => m._id === messageId ? { ...m, text: newText, isEdited: true, editedAt: data.message.editedAt } : m));
         if (socketRef.current && data.socketData) socketRef.current.emit("edit-message", data.socketData);
         setEditingMessage(null);
-      } else alert(data.message || "Failed to edit message");
+      } else alert(data.message || "Failed to edit");
     } catch { alert("Failed to edit message"); }
   };
 
-  /* -------- DELETE MESSAGE -------- */
+  /* ── DELETE ── */
   const handleDeleteMessage = async (messageId: string, deleteForEveryone: boolean) => {
     try {
       const res = await fetch("/api/chat/delete", {
@@ -300,11 +307,11 @@ export default function ChatPage() {
         } else {
           setMessages((prev) => prev.filter((m) => m._id !== messageId));
         }
-      } else alert(data.message || "Failed to delete message");
+      } else alert(data.message || "Failed to delete");
     } catch { alert("Failed to delete message"); }
   };
 
-  /* -------- IMAGE HANDLERS -------- */
+  /* ── IMAGE ── */
   const handleImageSelect = async (imageData: { imageUrl: string; imageWidth: number; imageHeight: number; isViewOnce: boolean; caption?: string; }) => {
     setShowImagePicker(false);
     try {
@@ -323,9 +330,8 @@ export default function ChatPage() {
 
   const handleImageView = async (message: Message) => {
     const isSender = message.senderProfileId === myProfileId;
-    const isReceiver = message.receiverProfileId === myProfileId;
     const hasViewed = message.viewedBy?.includes(myProfileId);
-    if (message.isViewOnce && isReceiver && !hasViewed) {
+    if (message.isViewOnce && message.receiverProfileId === myProfileId && !hasViewed) {
       try {
         const res = await fetch("/api/chat/mark-viewed", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ messageId: message._id, profileId: myProfileId }) });
         const data = await res.json();
@@ -338,18 +344,20 @@ export default function ChatPage() {
   const handleCloseImageViewer = () => {
     const { messageId, isViewOnce, isSender } = viewingImage || {};
     setViewingImage(null);
-    if (isViewOnce && messageId && !isSender) {
+    if (isViewOnce && messageId && !isSender)
       setMessages((prev) => prev.map((m) => m._id === messageId ? { ...m, imageUrl: null, text: "" } : m));
-    }
   };
 
-  /* -------- SEND TEXT MESSAGE -------- */
+  /* ── SEND TEXT ── */
   const handleSend = async () => {
     if (!newMessage.trim() || !myProfileId) return;
     const text = newMessage.trim();
-    setNewMessage("");
-    inputRef.current?.focus();
+    setNewMessage(""); // clear input
     stopTyping();
+
+    // Keep focus on input so keyboard stays open on mobile
+    setTimeout(() => inputRef.current?.focus(), 50);
+
     try {
       const res = await fetch("/api/chat", {
         method: "POST", headers: { "Content-Type": "application/json" },
@@ -364,31 +372,19 @@ export default function ChatPage() {
     } catch { alert("Failed to send message"); }
   };
 
-  /* -------- TICK COMPONENT -------- */
+  /* ── TICKS ── */
   const MessageTicks = ({ message }: { message: Message }) => {
     if (message.senderProfileId !== myProfileId) return null;
-    if (message.read) return (
-      <span className="inline-flex ml-1">
-        <FiCheck size={14} className="text-blue-400 -mr-2" />
-        <FiCheck size={14} className="text-blue-400" />
-      </span>
-    );
-    if (message.delivered) return (
-      <span className="inline-flex ml-1">
-        <FiCheck size={14} className="text-gray-400 -mr-2" />
-        <FiCheck size={14} className="text-gray-400" />
-      </span>
-    );
+    if (message.read) return <span className="inline-flex ml-1"><FiCheck size={14} className="text-blue-400 -mr-2" /><FiCheck size={14} className="text-blue-400" /></span>;
+    if (message.delivered) return <span className="inline-flex ml-1"><FiCheck size={14} className="text-gray-400 -mr-2" /><FiCheck size={14} className="text-gray-400" /></span>;
     return <span className="inline-flex ml-1"><FiCheck size={14} className="text-gray-400" /></span>;
   };
 
-  /* -------- RENDER DELETED MESSAGE -------- */
+  /* ── DELETED MESSAGE ── */
   const renderDeletedMessage = (message: Message) => {
     const isMine = message.senderProfileId === myProfileId;
     return (
-      <div className={`px-4 py-2 rounded-2xl text-sm max-w-[70%] ${isMine
-        ? "bg-pink-200 dark:bg-pink-900/50 text-gray-500 dark:text-gray-400 rounded-br-none"
-        : "bg-gray-200 dark:bg-gray-700 text-gray-500 dark:text-gray-400 shadow rounded-bl-none"}`}>
+      <div className={`px-4 py-2 rounded-2xl text-sm max-w-[70%] ${isMine ? "bg-pink-200 dark:bg-pink-900/50 text-gray-500 dark:text-gray-400 rounded-br-none" : "bg-gray-200 dark:bg-gray-700 text-gray-500 dark:text-gray-400 shadow rounded-bl-none"}`}>
         <div className="flex items-center gap-2 italic">
           <span className="text-xs">🚫</span>
           <span>{message.deletedForEveryone ? (isMine ? "You deleted this message" : "This message was deleted") : "Message deleted"}</span>
@@ -397,7 +393,7 @@ export default function ChatPage() {
     );
   };
 
-  /* -------- RENDER VIEW-ONCE MESSAGE -------- */
+  /* ── VIEW ONCE ── */
   const renderViewOnceMessage = (message: Message) => {
     const isMine = message.senderProfileId === myProfileId;
     const hasViewed = message.viewedBy?.includes(myProfileId);
@@ -405,16 +401,14 @@ export default function ChatPage() {
     if (!isMine && hasViewed && !hasImage) {
       return (
         <div className="px-4 py-3 rounded-2xl text-sm max-w-[70%] bg-gray-200 dark:bg-gray-700 shadow rounded-bl-none">
-          <div className="flex items-center gap-2 text-gray-500 dark:text-gray-400 italic">
-            <FiEye size={16} /><span>Photo expired</span>
-          </div>
+          <div className="flex items-center gap-2 text-gray-500 dark:text-gray-400 italic"><FiEye size={16} /><span>Photo expired</span></div>
         </div>
       );
     }
     return null;
   };
 
-  /* -------- RENDER IMAGE MESSAGE -------- */
+  /* ── IMAGE MESSAGE ── */
   const renderImageMessage = (message: Message) => {
     const isMine = message.senderProfileId === myProfileId;
     const hasViewed = message.viewedBy?.includes(myProfileId);
@@ -424,17 +418,11 @@ export default function ChatPage() {
     return (
       <div className={`max-w-[70%] ${isMine ? "ml-auto" : "mr-auto"}`} onClick={() => handleImageView(message)}>
         <div className={`relative rounded-2xl overflow-hidden cursor-pointer ${isMine ? "rounded-br-none" : "rounded-bl-none"}`}>
-          {shouldBlur && (
-            <div className="absolute inset-0 z-0">
-              <img src={message.imageUrl} alt="" className="w-full h-full object-cover blur-3xl scale-110" />
-            </div>
-          )}
+          {shouldBlur && <div className="absolute inset-0 z-0"><img src={message.imageUrl} alt="" className="w-full h-full object-cover blur-3xl scale-110" /></div>}
           <div className={`relative ${shouldBlur ? "z-10" : ""}`}>
             {message.isViewOnce && (
               <div className="absolute inset-0 z-20 flex flex-col items-center justify-center bg-black bg-opacity-30">
-                <div className="bg-white text-gray-800 px-4 py-2 rounded-full font-semibold flex items-center gap-2 shadow-lg">
-                  <FiEye size={18} /><span>View Once</span>
-                </div>
+                <div className="bg-white text-gray-800 px-4 py-2 rounded-full font-semibold flex items-center gap-2 shadow-lg"><FiEye size={18} /><span>View Once</span></div>
                 <p className="text-white text-xs mt-2 opacity-90">Tap to view</p>
               </div>
             )}
@@ -442,27 +430,26 @@ export default function ChatPage() {
           </div>
           {message.text && (
             <div className={`relative z-30 px-3 py-2 ${isMine ? "bg-pink-500 text-white" : "bg-white dark:bg-gray-700 dark:text-gray-100"}`}>
-              <div className="flex items-end gap-1">
-                <span className="text-sm">{message.text}</span>
-                {isMine && <MessageTicks message={message} />}
-              </div>
+              <div className="flex items-end gap-1"><span className="text-sm">{message.text}</span>{isMine && <MessageTicks message={message} />}</div>
             </div>
           )}
           {!message.text && isMine && (
-            <div className="absolute bottom-2 right-2 bg-black bg-opacity-50 rounded-full px-2 py-1 z-30">
-              <MessageTicks message={message} />
-            </div>
+            <div className="absolute bottom-2 right-2 bg-black bg-opacity-50 rounded-full px-2 py-1 z-30"><MessageTicks message={message} /></div>
           )}
         </div>
       </div>
     );
   };
 
+  /* ── STATUS TEXT ── */
+  const statusText = isOtherTyping ? "typing..." : isOnline ? "Online" : "Offline";
+  const statusColor = isOtherTyping ? "text-pink-400" : isOnline ? "text-green-400" : dark ? "text-gray-500" : "text-gray-400";
+
   return (
     <div className={`flex flex-col h-screen ${dark ? "bg-gray-900" : "bg-pink-50"}`}>
 
       {/* HEADER */}
-      <div className={`flex items-center justify-between px-4 py-3 shadow ${dark ? "bg-gray-800" : "bg-white"}`}>
+      <div className={`flex items-center justify-between px-4 py-3 shadow flex-shrink-0 ${dark ? "bg-gray-800" : "bg-white"}`}>
         <div className="flex items-center gap-3 flex-1 min-w-0">
           <button onClick={() => router.back()}>
             <FiArrowLeft size={20} className={dark ? "text-gray-300" : "text-gray-700"} />
@@ -473,12 +460,8 @@ export default function ChatPage() {
               : <div className="w-9 h-9 rounded-full bg-gray-300 dark:bg-gray-600 flex-shrink-0" />
             }
             <div className="min-w-0">
-              <p className={`text-sm font-semibold truncate ${dark ? "text-gray-100" : "text-gray-800"}`}>
-                {profile?.name || "Loading..."}
-              </p>
-              <p className={`text-xs ${dark ? "text-gray-400" : "text-gray-400"}`}>
-                {isOtherTyping ? "typing..." : "Online"}
-              </p>
+              <p className={`text-sm font-semibold truncate ${dark ? "text-gray-100" : "text-gray-800"}`}>{profile?.name || "Loading..."}</p>
+              <p className={`text-xs font-medium ${statusColor}`}>{statusText}</p>
             </div>
           </div>
         </div>
@@ -492,67 +475,66 @@ export default function ChatPage() {
         </div>
       </div>
 
-      {/* SEARCH BAR */}
-      {isSearchOpen && (
-        <ChatSearch messages={messages} onResultClick={handleSearchResultClick} onClose={() => setIsSearchOpen(false)} />
-      )}
+      {isSearchOpen && <ChatSearch messages={messages} onResultClick={handleSearchResultClick} onClose={() => setIsSearchOpen(false)} />}
 
-      {/* MESSAGES */}
-      <div className="flex-1 overflow-y-auto px-4 py-3 space-y-3">
-        {messages.length === 0 ? (
-          <div className={`text-center text-sm mt-10 ${dark ? "text-gray-500" : "text-gray-400"}`}>
-            No messages yet. Start the conversation! 👋
-          </div>
-        ) : (
-          messages.map((msg) => {
-            const isMine = msg.senderProfileId === myProfileId;
-            return (
-              <div
-                key={msg._id}
-                ref={(el) => { if (el) messageRefs.current[msg._id] = el; }}
-                className={`flex ${isMine ? "justify-end" : "justify-start"} transition-colors duration-500`}
-                onContextMenu={(e) => handleLongPress(e, msg)}
-                onTouchStart={(e) => {
-                  const timer = setTimeout(() => handleLongPress(e, msg), 500);
-                  e.currentTarget.ontouchend = () => clearTimeout(timer);
-                }}
-              >
-                {msg.isDeleted ? renderDeletedMessage(msg)
-                  : msg.imageUrl ? renderImageMessage(msg)
-                  : (
-                    <div className={`px-4 py-2 rounded-2xl text-sm max-w-[70%] ${
-                      isMine
-                        ? "bg-pink-500 text-white rounded-br-none"
-                        : dark
-                          ? "bg-gray-700 text-gray-100 shadow rounded-bl-none"
-                          : "bg-white text-gray-800 shadow rounded-bl-none"
-                    }`}>
-                      <div className="flex items-end gap-1">
-                        <div className="flex flex-col">
-                          <span>{msg.text}</span>
-                          {msg.isEdited && (
-                            <span className={`text-xs mt-1 ${isMine ? "text-pink-200" : dark ? "text-gray-400" : "text-gray-400"}`}>
-                              edited
-                            </span>
-                          )}
+      {/* MESSAGES — flex-col so newest is at bottom naturally */}
+      <div className="flex-1 overflow-y-auto px-4 py-3 flex flex-col">
+        {/* Spacer pushes messages to bottom when there are few */}
+        <div className="flex-1" />
+
+        <div className="flex flex-col gap-3">
+          {messages.length === 0 ? (
+            <div className={`text-center text-sm ${dark ? "text-gray-500" : "text-gray-400"}`}>
+              No messages yet. Start the conversation! 👋
+            </div>
+          ) : (
+            messages.map((msg) => {
+              const isMine = msg.senderProfileId === myProfileId;
+              return (
+                <div
+                  key={msg._id}
+                  ref={(el) => { if (el) messageRefs.current[msg._id] = el; }}
+                  className={`flex ${isMine ? "justify-end" : "justify-start"} transition-colors duration-500`}
+                  onContextMenu={(e) => handleLongPress(e, msg)}
+                  onTouchStart={(e) => {
+                    const timer = setTimeout(() => handleLongPress(e, msg), 500);
+                    e.currentTarget.ontouchend = () => clearTimeout(timer);
+                  }}
+                >
+                  {msg.isDeleted ? renderDeletedMessage(msg)
+                    : msg.imageUrl ? renderImageMessage(msg)
+                    : (
+                      <div className={`px-4 py-2 rounded-2xl text-sm max-w-[70%] ${
+                        isMine
+                          ? "bg-pink-500 text-white rounded-br-none"
+                          : dark
+                            ? "bg-gray-700 text-gray-100 shadow rounded-bl-none"
+                            : "bg-white text-gray-800 shadow rounded-bl-none"
+                      }`}>
+                        <div className="flex items-end gap-1">
+                          <div className="flex flex-col">
+                            <span>{msg.text}</span>
+                            {msg.isEdited && (
+                              <span className={`text-xs mt-1 ${isMine ? "text-pink-200" : dark ? "text-gray-400" : "text-gray-400"}`}>edited</span>
+                            )}
+                          </div>
+                          {isMine && <MessageTicks message={msg} />}
                         </div>
-                        {isMine && <MessageTicks message={msg} />}
                       </div>
-                    </div>
-                  )}
-              </div>
-            );
-          })
-        )}
+                    )}
+                </div>
+              );
+            })
+          )}
 
-        {isOtherTyping && (
-          <div className="flex justify-start"><TypingIndicator /></div>
-        )}
-        <div ref={bottomRef} />
+          {isOtherTyping && <div className="flex justify-start"><TypingIndicator /></div>}
+          {/* Scroll anchor */}
+          <div ref={bottomRef} />
+        </div>
       </div>
 
-      {/* INPUT */}
-      <div className={`flex items-center gap-2 px-3 py-3 border-t ${dark ? "bg-gray-800 border-gray-700" : "bg-white border-gray-200"}`}>
+      {/* INPUT — flex-shrink-0 so it never disappears */}
+      <div className={`flex-shrink-0 flex items-center gap-2 px-3 py-3 border-t ${dark ? "bg-gray-800 border-gray-700" : "bg-white border-gray-200"}`}>
         <button
           onClick={() => setShowImagePicker(true)}
           className={`p-2 rounded-full transition-colors ${dark ? "text-gray-400 hover:text-pink-400 hover:bg-gray-700" : "text-gray-600 hover:text-pink-500 hover:bg-pink-50"}`}
@@ -575,39 +557,45 @@ export default function ChatPage() {
           type="button"
           onClick={handleSend}
           disabled={!newMessage.trim()}
-          className="bg-pink-500 text-white p-2 rounded-full disabled:bg-gray-300 dark:disabled:bg-gray-600 transition-colors"
+          className="bg-pink-500 text-white p-2 rounded-full disabled:bg-gray-300 dark:disabled:bg-gray-600 transition-colors flex-shrink-0"
         >
           <FiSend />
         </button>
       </div>
 
-      {/* CONTEXT MENU */}
+      {/* CONTEXT MENU — dark mode aware */}
       {contextMenu && (
-        <MessageContextMenu
-          messageId={contextMenu.messageId} messageText={contextMenu.messageText}
-          isMine={contextMenu.isMine} messageCreatedAt={contextMenu.messageCreatedAt}
-          onEdit={(id, text) => setEditingMessage({ id, text })}
-          onDelete={handleDeleteMessage} onTranslate={() => {}}
-          onClose={() => setContextMenu(null)} position={contextMenu.position}
-        />
+        <div
+          className="fixed inset-0 z-40"
+          onClick={() => setContextMenu(null)}
+          onContextMenu={(e) => e.preventDefault()}
+        >
+          <div
+            className={`absolute rounded-xl shadow-2xl border overflow-hidden min-w-[160px] ${dark ? "bg-gray-800 border-gray-700" : "bg-white border-gray-200"}`}
+            style={{
+              top: Math.min(contextMenu.position.y, window.innerHeight - 200),
+              left: Math.min(contextMenu.position.x, window.innerWidth - 180),
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <MessageContextMenu
+              messageId={contextMenu.messageId}
+              messageText={contextMenu.messageText}
+              isMine={contextMenu.isMine}
+              messageCreatedAt={contextMenu.messageCreatedAt}
+              onEdit={(id, text) => { setEditingMessage({ id, text }); setContextMenu(null); }}
+              onDelete={(id, forAll) => { handleDeleteMessage(id, forAll); setContextMenu(null); }}
+              onTranslate={() => setContextMenu(null)}
+              onClose={() => setContextMenu(null)}
+              position={contextMenu.position}
+            />
+          </div>
+        </div>
       )}
 
-      {/* EDIT MODAL */}
-      {editingMessage && (
-        <EditMessageModal messageId={editingMessage.id} currentText={editingMessage.text} onSave={handleEditMessage} onCancel={() => setEditingMessage(null)} />
-      )}
-
-      {/* IMAGE PICKER */}
-      {showImagePicker && (
-        <ImagePicker onImageSelect={handleImageSelect} onCancel={() => setShowImagePicker(false)} />
-      )}
-
-      {/* IMAGE VIEWER */}
-      {viewingImage && (
-        <ImageViewer imageUrl={viewingImage.url} caption={viewingImage.caption} isViewOnce={viewingImage.isViewOnce} isSender={viewingImage.isSender} onClose={handleCloseImageViewer} />
-      )}
-
-      {/* VIDEO CALL MODAL */}
+      {editingMessage && <EditMessageModal messageId={editingMessage.id} currentText={editingMessage.text} onSave={handleEditMessage} onCancel={() => setEditingMessage(null)} />}
+      {showImagePicker && <ImagePicker onImageSelect={handleImageSelect} onCancel={() => setShowImagePicker(false)} />}
+      {viewingImage && <ImageViewer imageUrl={viewingImage.url} caption={viewingImage.caption} isViewOnce={viewingImage.isViewOnce} isSender={viewingImage.isSender} onClose={handleCloseImageViewer} />}
       {videoCall && profile && socketRef.current && (
         <VideoCallModal socket={socketRef.current} myProfileId={myProfileId} otherProfileId={otherProfileId} otherName={profile.name} otherImageUrl={profile.imageUrl} isIncoming={videoCall.isIncoming} incomingOffer={videoCall.incomingOffer} onClose={() => setVideoCall(null)} />
       )}

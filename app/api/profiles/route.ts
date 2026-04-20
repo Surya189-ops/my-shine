@@ -23,7 +23,7 @@ export async function GET(request: Request) {
     }
 
     const profiles = await Profile.find(query)
-      .select("_id name age bio gender country isCameraVerified imageUrl createdAt")
+      .select("_id name age bio gender country isCameraVerified imageUrl isBusy createdAt")
       .sort({ createdAt: -1 })
       .lean();
 

@@ -10,15 +10,6 @@ import {
 } from "react-icons/fi";
 import { useDarkMode } from "@/app/contexts/DarkModeContext";
 
-const COUNTRIES = [
-  { value: "korea", label: "🇰🇷 Korea" },
-  { value: "japan", label: "🇯🇵 Japan" },
-  { value: "brazil", label: "🌎 Latin — Brazil" },
-  { value: "colombia", label: "🌎 Latin — Colombia" },
-  { value: "venezuela", label: "🌎 Latin — Venezuela" },
-  { value: "argentina", label: "🌎 Latin — Argentina" },
-];
-
 // IP country codes that are allowed to apply to homepage
 const HOMEPAGE_COUNTRY_CODES = ["JP", "KR", "BR", "CO", "VE", "AR"];
 
@@ -30,7 +21,6 @@ export default function ProfilePage() {
   const [age, setAge] = useState("");
   const [bio, setBio] = useState("");
   const [gender, setGender] = useState("");
-  const [country, setCountry] = useState("");
   const [loading, setLoading] = useState(false);
   const [profile, setProfile] = useState<any>(null);
   const [imagePreview, setImagePreview] = useState("");
@@ -42,7 +32,6 @@ export default function ProfilePage() {
   const [verifyUploading, setVerifyUploading] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
 
-  // IP-based: can this user apply to homepage?
   const [canApplyToHomepage, setCanApplyToHomepage] = useState(false);
   const [locationChecked, setLocationChecked] = useState(false);
 
@@ -55,13 +44,10 @@ export default function ProfilePage() {
       ? JSON.parse(localStorage.getItem("myshine_user") || "{}")
       : null;
 
-  // Detect user's country via IP on mount
   useEffect(() => {
     fetch("/api/detect-country")
       .then((res) => res.json())
-      .then((data) => {
-        setCanApplyToHomepage(data.canApplyToHomepage === true);
-      })
+      .then((data) => setCanApplyToHomepage(data.canApplyToHomepage === true))
       .catch(() => setCanApplyToHomepage(false))
       .finally(() => setLocationChecked(true));
   }, []);
@@ -82,7 +68,6 @@ export default function ProfilePage() {
           setAge(p.age?.toString() || "");
           setBio(p.bio || "");
           setGender(p.gender || "");
-          setCountry(p.country || "");
           setIsEditing(false);
           if (p._id && !user.profileId) {
             localStorage.setItem(
@@ -145,7 +130,6 @@ export default function ProfilePage() {
     if (!verifyPhone.trim()) return alert("Please enter your phone number");
     if (!verifyPhoto) return alert("Please upload a photo");
     if (!profile?._id) return alert("Save your profile first");
-
     try {
       setVerifyUploading(true);
       const res = await fetch("/api/profile/apply-homepage", {
@@ -184,7 +168,6 @@ export default function ProfilePage() {
           age: Number(age),
           bio,
           gender,
-          country,
           isCameraVerified: profile?.isCameraVerified || false,
         }),
       });
@@ -198,10 +181,8 @@ export default function ProfilePage() {
         setIsEditing(false);
 
         if (canApplyToHomepage) {
-          // Japan / Korea / Latin users — stay on profile page, show Apply to Homepage
           alert("Profile saved successfully!");
         } else {
-          // All other countries (India etc.) — redirect to homepage
           alert("Profile saved! Taking you to the homepage.");
           router.replace("/");
         }
@@ -214,17 +195,13 @@ export default function ProfilePage() {
 
   const handleLogout = () => {
     if (!window.confirm("Are you sure you want to logout?")) return;
-    // Set flag so login page knows user explicitly logged out
-    // This prevents Google session from auto-logging them back in
     localStorage.setItem("myshine_logged_out", "true");
     localStorage.removeItem("myshine_user");
     router.replace("/login");
   };
 
-  // Only shown to users from Japan / Korea / Latin countries
   const renderVerificationStatus = () => {
     if (!locationChecked || !canApplyToHomepage) return null;
-
     const status = profile?.verificationStatus || "none";
 
     if (status === "approved") return (
@@ -256,21 +233,14 @@ export default function ProfilePage() {
             <p className="text-xs text-red-600 dark:text-red-500">Please try again with a clearer photo</p>
           </div>
         </div>
-        <button
-          onClick={() => setShowVerifyModal(true)}
-          className="w-full py-3 border-2 border-pink-500 text-pink-500 rounded-xl font-semibold hover:bg-pink-50 dark:hover:bg-pink-900/20 transition-colors flex items-center justify-center gap-2"
-        >
+        <button onClick={() => setShowVerifyModal(true)} className="w-full py-3 border-2 border-pink-500 text-pink-500 rounded-xl font-semibold hover:bg-pink-50 dark:hover:bg-pink-900/20 transition-colors flex items-center justify-center gap-2">
           <FiCamera size={18} /> Apply to Homepage Again
         </button>
       </div>
     );
 
-    // status === "none" and profile exists
     if (profile?._id) return (
-      <button
-        onClick={() => setShowVerifyModal(true)}
-        className="w-full py-3 border-2 border-pink-500 text-pink-500 rounded-xl font-semibold hover:bg-pink-50 dark:hover:bg-pink-900/20 transition-colors flex items-center justify-center gap-2"
-      >
+      <button onClick={() => setShowVerifyModal(true)} className="w-full py-3 border-2 border-pink-500 text-pink-500 rounded-xl font-semibold hover:bg-pink-50 dark:hover:bg-pink-900/20 transition-colors flex items-center justify-center gap-2">
         <FiCamera size={18} /> Apply to Homepage
       </button>
     );
@@ -278,13 +248,8 @@ export default function ProfilePage() {
     return null;
   };
 
-  const inputClass =
-    "w-full mt-1 p-3 border border-gray-200 dark:border-gray-600 rounded-xl focus:outline-none focus:ring-2 focus:ring-pink-500 bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100 placeholder-gray-400 dark:placeholder-gray-500";
+  const inputClass = "w-full mt-1 p-3 border border-gray-200 dark:border-gray-600 rounded-xl focus:outline-none focus:ring-2 focus:ring-pink-500 bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100 placeholder-gray-400 dark:placeholder-gray-500";
   const labelClass = "text-sm font-medium text-gray-600 dark:text-gray-400";
-
-  const countryLabel =
-    COUNTRIES.find((c) => c.value === country)?.label ||
-    (country ? country.charAt(0).toUpperCase() + country.slice(1) : "—");
 
   return (
     <>
@@ -293,21 +258,12 @@ export default function ProfilePage() {
 
           {/* 3 DOT MENU */}
           <div className="absolute top-4 right-4 z-10" ref={menuRef}>
-            <button
-              onClick={(e) => { e.stopPropagation(); setMenuOpen(!menuOpen); }}
-              className="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-full transition-colors"
-            >
+            <button onClick={(e) => { e.stopPropagation(); setMenuOpen(!menuOpen); }} className="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-full transition-colors">
               <FiMoreVertical size={24} className="text-gray-700 dark:text-gray-300" />
             </button>
-
             {menuOpen && (
               <div className="absolute right-0 mt-2 w-52 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl shadow-xl overflow-hidden animate-fadeIn">
-
-                {/* DARK MODE */}
-                <button
-                  className="w-full text-left px-4 py-3 hover:bg-gray-50 dark:hover:bg-gray-700 flex items-center justify-between text-gray-700 dark:text-gray-300 transition-colors"
-                  onClick={toggleDark}
-                >
+                <button className="w-full text-left px-4 py-3 hover:bg-gray-50 dark:hover:bg-gray-700 flex items-center justify-between text-gray-700 dark:text-gray-300 transition-colors" onClick={toggleDark}>
                   <div className="flex items-center gap-3">
                     {dark ? <FiSun size={18} className="text-yellow-400" /> : <FiMoon size={18} />}
                     <span>{dark ? "Light Mode" : "Dark Mode"}</span>
@@ -316,41 +272,17 @@ export default function ProfilePage() {
                     <div className={`absolute top-0.5 w-4 h-4 bg-white rounded-full shadow transition-transform ${dark ? "translate-x-5" : "translate-x-0.5"}`} />
                   </div>
                 </button>
-
-                {/* ANALYTICS */}
-                <button
-                  className="w-full text-left px-4 py-3 hover:bg-gray-50 dark:hover:bg-gray-700 flex items-center gap-3 text-gray-700 dark:text-gray-300 border-t border-gray-100 dark:border-gray-700 transition-colors"
-                  onClick={() => { setMenuOpen(false); router.push("/analytics"); }}
-                >
-                  <FiBarChart2 size={18} />
-                  <span>Analytics</span>
+                <button className="w-full text-left px-4 py-3 hover:bg-gray-50 dark:hover:bg-gray-700 flex items-center gap-3 text-gray-700 dark:text-gray-300 border-t border-gray-100 dark:border-gray-700 transition-colors" onClick={() => { setMenuOpen(false); router.push("/analytics"); }}>
+                  <FiBarChart2 size={18} /><span>Analytics</span>
                 </button>
-
-                {/* HELP */}
-                <button
-                  className="w-full text-left px-4 py-3 hover:bg-gray-50 dark:hover:bg-gray-700 flex items-center gap-3 text-gray-700 dark:text-gray-300 border-t border-gray-100 dark:border-gray-700 transition-colors"
-                  onClick={() => { setMenuOpen(false); alert("Help & Support\n\nContact: support@myshine.com"); }}
-                >
-                  <FiHelpCircle size={18} />
-                  <span>Help & Support</span>
+                <button className="w-full text-left px-4 py-3 hover:bg-gray-50 dark:hover:bg-gray-700 flex items-center gap-3 text-gray-700 dark:text-gray-300 border-t border-gray-100 dark:border-gray-700 transition-colors" onClick={() => { setMenuOpen(false); alert("Help & Support\n\nContact: support@myshine.com"); }}>
+                  <FiHelpCircle size={18} /><span>Help & Support</span>
                 </button>
-
-                {/* SETTINGS */}
-                <button
-                  className="w-full text-left px-4 py-3 hover:bg-gray-50 dark:hover:bg-gray-700 flex items-center gap-3 text-gray-700 dark:text-gray-300 border-t border-gray-100 dark:border-gray-700 transition-colors"
-                  onClick={() => { setMenuOpen(false); alert("Settings coming soon!"); }}
-                >
-                  <FiSettings size={18} />
-                  <span>Settings</span>
+                <button className="w-full text-left px-4 py-3 hover:bg-gray-50 dark:hover:bg-gray-700 flex items-center gap-3 text-gray-700 dark:text-gray-300 border-t border-gray-100 dark:border-gray-700 transition-colors" onClick={() => { setMenuOpen(false); alert("Settings coming soon!"); }}>
+                  <FiSettings size={18} /><span>Settings</span>
                 </button>
-
-                {/* LOGOUT */}
-                <button
-                  className="w-full text-left px-4 py-3 hover:bg-red-50 dark:hover:bg-red-900/30 flex items-center gap-3 text-red-600 dark:text-red-400 border-t border-gray-100 dark:border-gray-700 transition-colors"
-                  onClick={handleLogout}
-                >
-                  <FiLogOut size={18} />
-                  <span>Logout</span>
+                <button className="w-full text-left px-4 py-3 hover:bg-red-50 dark:hover:bg-red-900/30 flex items-center gap-3 text-red-600 dark:text-red-400 border-t border-gray-100 dark:border-gray-700 transition-colors" onClick={handleLogout}>
+                  <FiLogOut size={18} /><span>Logout</span>
                 </button>
               </div>
             )}
@@ -368,30 +300,16 @@ export default function ProfilePage() {
                   <span className="text-sm">Photo</span>
                 )}
               </div>
-
               <input type="file" accept="image/*" ref={fileInputRef} onChange={handleImageSelect} className="hidden" />
-
               {profile?.verificationStatus === "approved" && (
-                <div className="absolute bottom-1 right-1 bg-green-500 text-white w-6 h-6 rounded-full flex items-center justify-center text-sm">
-                  ✓
-                </div>
+                <div className="absolute bottom-1 right-1 bg-green-500 text-white w-6 h-6 rounded-full flex items-center justify-center text-sm">✓</div>
               )}
-
-              <button
-                type="button"
-                onClick={() => fileInputRef.current?.click()}
-                className="absolute bottom-0 left-1/2 -translate-x-1/2 bg-pink-500 text-white text-xs px-3 py-1 rounded-full hover:bg-pink-600 transition-colors"
-              >
+              <button type="button" onClick={() => fileInputRef.current?.click()} className="absolute bottom-0 left-1/2 -translate-x-1/2 bg-pink-500 text-white text-xs px-3 py-1 rounded-full hover:bg-pink-600 transition-colors">
                 Edit
               </button>
             </div>
-
             {imagePreview && (
-              <button
-                onClick={handleImageUpload}
-                disabled={uploading}
-                className="mt-3 w-full bg-green-500 text-white text-sm py-2 rounded-xl disabled:opacity-50 hover:bg-green-600 transition-colors"
-              >
+              <button onClick={handleImageUpload} disabled={uploading} className="mt-3 w-full bg-green-500 text-white text-sm py-2 rounded-xl disabled:opacity-50 hover:bg-green-600 transition-colors">
                 {uploading ? "Uploading..." : "Save Photo"}
               </button>
             )}
@@ -401,53 +319,30 @@ export default function ProfilePage() {
           {!isEditing && profile ? (
             <div className="space-y-3 mb-6">
               {[
-                { label: "Name", value: name },
-                { label: "Age", value: age },
+                { label: "Name",   value: name },
+                { label: "Age",    value: age },
                 { label: "Gender", value: gender ? gender.charAt(0).toUpperCase() + gender.slice(1) : "—" },
-                { label: "Bio", value: bio || "—" },
-                { label: "Country", value: countryLabel },
+                { label: "Bio",    value: bio || "—" },
               ].map((item) => (
                 <div key={item.label} className="flex flex-col">
                   <span className={labelClass}>{item.label}</span>
-                  <span className="mt-1 p-3 rounded-xl bg-gray-50 dark:bg-gray-700 text-gray-800 dark:text-gray-100 text-sm">
-                    {item.value}
-                  </span>
+                  <span className="mt-1 p-3 rounded-xl bg-gray-50 dark:bg-gray-700 text-gray-800 dark:text-gray-100 text-sm">{item.value}</span>
                 </div>
               ))}
-
-              <button
-                onClick={() => setIsEditing(true)}
-                className="w-full py-3 border-2 border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 rounded-xl font-semibold hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors flex items-center justify-center gap-2 mt-2"
-              >
-                <FiEdit2 size={16} />
-                Edit Profile
+              <button onClick={() => setIsEditing(true)} className="w-full py-3 border-2 border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 rounded-xl font-semibold hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors flex items-center justify-center gap-2 mt-2">
+                <FiEdit2 size={16} /> Edit Profile
               </button>
             </div>
           ) : (
-            /* EDIT MODE */
             <div className="space-y-4 mb-4">
               <div>
                 <label className={labelClass}>Name *</label>
-                <input
-                  value={name}
-                  onChange={(e) => setName(e.target.value)}
-                  placeholder="Your name"
-                  className={inputClass}
-                />
+                <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Your name" className={inputClass} />
               </div>
-
               <div>
                 <label className={labelClass}>Age *</label>
-                <input
-                  type="number"
-                  value={age}
-                  onChange={(e) => setAge(e.target.value)}
-                  placeholder="Your age"
-                  min="18"
-                  className={inputClass}
-                />
+                <input type="number" value={age} onChange={(e) => setAge(e.target.value)} placeholder="Your age" min="18" className={inputClass} />
               </div>
-
               <div>
                 <label className={labelClass}>Gender *</label>
                 <select value={gender} onChange={(e) => setGender(e.target.value)} className={inputClass}>
@@ -457,52 +352,22 @@ export default function ProfilePage() {
                   <option value="other">Other</option>
                 </select>
               </div>
-
               <div>
                 <label className={labelClass}>Bio</label>
-                <textarea
-                  rows={3}
-                  value={bio}
-                  onChange={(e) => setBio(e.target.value)}
-                  placeholder="Tell us about yourself..."
-                  className={inputClass + " resize-none"}
-                />
+                <textarea rows={3} value={bio} onChange={(e) => setBio(e.target.value)} placeholder="Tell us about yourself..." className={inputClass + " resize-none"} />
               </div>
-
-              <div>
-                <label className={labelClass}>Country</label>
-                <select value={country} onChange={(e) => setCountry(e.target.value)} className={inputClass}>
-                  <option value="">Select country</option>
-                  {COUNTRIES.map((c) => (
-                    <option key={c.value} value={c.value}>{c.label}</option>
-                  ))}
-                </select>
-              </div>
-
-              <button
-                onClick={saveProfile}
-                disabled={loading}
-                className="w-full py-3 bg-pink-500 text-white rounded-xl font-semibold disabled:opacity-50 hover:bg-pink-600 transition-colors"
-              >
+              <button onClick={saveProfile} disabled={loading} className="w-full py-3 bg-pink-500 text-white rounded-xl font-semibold disabled:opacity-50 hover:bg-pink-600 transition-colors">
                 {loading ? "Saving..." : "Save Profile"}
               </button>
-
               {profile && (
-                <button
-                  onClick={() => setIsEditing(false)}
-                  className="w-full py-3 border border-gray-200 dark:border-gray-600 text-gray-500 dark:text-gray-400 rounded-xl text-sm hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
-                >
+                <button onClick={() => setIsEditing(false)} className="w-full py-3 border border-gray-200 dark:border-gray-600 text-gray-500 dark:text-gray-400 rounded-xl text-sm hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors">
                   Cancel
                 </button>
               )}
             </div>
           )}
 
-          {/* APPLY TO HOMEPAGE — only for Japan / Korea / Latin users */}
-          <div className="mt-2">
-            {renderVerificationStatus()}
-          </div>
-
+          <div className="mt-2">{renderVerificationStatus()}</div>
         </div>
       </div>
 
@@ -510,77 +375,37 @@ export default function ProfilePage() {
       {showVerifyModal && (
         <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 px-4">
           <div className="bg-white dark:bg-gray-800 rounded-2xl p-6 w-full max-w-sm transition-colors duration-300">
-
             <div className="flex items-center justify-between mb-5">
               <h3 className="font-bold text-gray-800 dark:text-gray-100 text-lg">Apply to Homepage</h3>
               <button onClick={() => { setShowVerifyModal(false); setVerifyPhoto(""); setVerifyPhone(""); }}>
                 <FiX size={22} className="text-gray-500 dark:text-gray-400" />
               </button>
             </div>
-
             <div className="mb-4">
-              <label className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-1 block">
-                Name
-              </label>
-              <div className="p-3 rounded-xl bg-gray-50 dark:bg-gray-700 text-gray-800 dark:text-gray-100 text-sm">
-                {name || "—"}
-              </div>
+              <label className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-1 block">Name</label>
+              <div className="p-3 rounded-xl bg-gray-50 dark:bg-gray-700 text-gray-800 dark:text-gray-100 text-sm">{name || "—"}</div>
             </div>
-
             <div className="mb-4">
-              <label className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-1 block">
-                Phone Number *
-              </label>
-              <input
-                type="tel"
-                value={verifyPhone}
-                onChange={(e) => setVerifyPhone(e.target.value)}
-                placeholder="+91 98765 43210"
-                className="w-full p-3 border border-gray-200 dark:border-gray-600 rounded-xl focus:outline-none focus:ring-2 focus:ring-pink-500 bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100 placeholder-gray-400 dark:placeholder-gray-500 text-sm"
-              />
+              <label className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-1 block">Phone Number *</label>
+              <input type="tel" value={verifyPhone} onChange={(e) => setVerifyPhone(e.target.value)} placeholder="+91 98765 43210" className="w-full p-3 border border-gray-200 dark:border-gray-600 rounded-xl focus:outline-none focus:ring-2 focus:ring-pink-500 bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100 placeholder-gray-400 dark:placeholder-gray-500 text-sm" />
             </div>
-
             <div className="mb-5">
-              <label className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-1 block">
-                Verification Photo *
-              </label>
-
+              <label className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-1 block">Verification Photo *</label>
               {verifyPhoto ? (
                 <div className="relative">
                   <img src={verifyPhoto} alt="Verification" className="w-full h-44 object-cover rounded-xl" />
-                  <button
-                    onClick={() => setVerifyPhoto("")}
-                    className="absolute top-2 right-2 bg-black/50 text-white rounded-full p-1"
-                  >
-                    <FiX size={16} />
-                  </button>
+                  <button onClick={() => setVerifyPhoto("")} className="absolute top-2 right-2 bg-black/50 text-white rounded-full p-1"><FiX size={16} /></button>
                 </div>
               ) : (
-                <div
-                  onClick={() => verifyFileInputRef.current?.click()}
-                  className="w-full h-44 border-2 border-dashed border-pink-300 dark:border-pink-700 rounded-xl flex flex-col items-center justify-center gap-2 cursor-pointer hover:bg-pink-50 dark:hover:bg-pink-900/20 transition-colors"
-                >
+                <div onClick={() => verifyFileInputRef.current?.click()} className="w-full h-44 border-2 border-dashed border-pink-300 dark:border-pink-700 rounded-xl flex flex-col items-center justify-center gap-2 cursor-pointer hover:bg-pink-50 dark:hover:bg-pink-900/20 transition-colors">
                   <FiCamera size={32} className="text-pink-400" />
                   <p className="text-sm text-pink-400 font-medium">Tap to take/upload photo</p>
                   <p className="text-xs text-gray-400 dark:text-gray-500">Clear selfie works best</p>
                 </div>
               )}
-
-              <input
-                type="file"
-                accept="image/*"
-                capture="user"
-                ref={verifyFileInputRef}
-                onChange={handleVerifyPhotoSelect}
-                className="hidden"
-              />
+              <input type="file" accept="image/*" capture="user" ref={verifyFileInputRef} onChange={handleVerifyPhotoSelect} className="hidden" />
             </div>
-
-            <button
-              onClick={handleSubmitVerification}
-              disabled={!verifyPhoto || !verifyPhone.trim() || verifyUploading}
-              className="w-full py-3 bg-pink-500 text-white rounded-xl font-semibold disabled:opacity-50 hover:bg-pink-600 transition-colors"
-            >
+            <button onClick={handleSubmitVerification} disabled={!verifyPhoto || !verifyPhone.trim() || verifyUploading} className="w-full py-3 bg-pink-500 text-white rounded-xl font-semibold disabled:opacity-50 hover:bg-pink-600 transition-colors">
               {verifyUploading ? "Submitting..." : "Submit for Verification"}
             </button>
           </div>

@@ -21,6 +21,7 @@ type Profile = {
   country?: string;
   imageUrl?: string;
   tier?: string;
+  isBusy?: boolean;
 };
 
 const isRealProfile = (profileId: any) => {
@@ -61,8 +62,15 @@ const defaultProfiles: Profile[] = [
 export default function HomePage() {
   const router = useRouter();
 
-  const [selectedPlace, setSelectedPlace] = useState<Place>("all");
-  const [selectedGender, setSelectedGender] = useState<Gender>("all");
+  const [selectedPlace, setSelectedPlace] = useState<Place>(() => {
+    if (typeof window !== "undefined") return (sessionStorage.getItem("filter_place") as Place) || "all";
+    return "all";
+  });
+  const [selectedGender, setSelectedGender] = useState<Gender>(() => {
+    if (typeof window !== "undefined") return (sessionStorage.getItem("filter_gender") as Gender) || "all";
+    return "all";
+  });
+
   const [showPlaceDropdown, setShowPlaceDropdown] = useState(false);
   const [showGenderDropdown, setShowGenderDropdown] = useState(false);
   const [profiles, setProfiles] = useState<Profile[]>([]);
@@ -75,12 +83,13 @@ export default function HomePage() {
   const placeRef = useRef<HTMLDivElement>(null);
   const genderRef = useRef<HTMLDivElement>(null);
 
+  useEffect(() => { sessionStorage.setItem("filter_place", selectedPlace); }, [selectedPlace]);
+  useEffect(() => { sessionStorage.setItem("filter_gender", selectedGender); }, [selectedGender]);
+
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
-      if (placeRef.current && !placeRef.current.contains(e.target as Node))
-        setShowPlaceDropdown(false);
-      if (genderRef.current && !genderRef.current.contains(e.target as Node))
-        setShowGenderDropdown(false);
+      if (placeRef.current && !placeRef.current.contains(e.target as Node)) setShowPlaceDropdown(false);
+      if (genderRef.current && !genderRef.current.contains(e.target as Node)) setShowGenderDropdown(false);
     };
     document.addEventListener("mousedown", handleClickOutside);
     return () => document.removeEventListener("mousedown", handleClickOutside);
@@ -121,7 +130,6 @@ export default function HomePage() {
 
   useEffect(() => {
     setCurrentPage(0);
-
     const matchesPlace = (country?: string) => {
       if (selectedPlace === "all") return true;
       if (selectedPlace === "korea") return country === "korea";
@@ -129,29 +137,19 @@ export default function HomePage() {
       if (selectedPlace === "latin") return LATIN_COUNTRIES.includes(country || "");
       return true;
     };
-    const matchesGender = (gender: string) =>
-      selectedGender === "all" ? true : gender === selectedGender;
+    const matchesGender = (gender: string) => selectedGender === "all" ? true : gender === selectedGender;
 
-    const filteredReal = profiles.filter(
-      (p) => matchesPlace(p.country) && matchesGender(p.gender)
-    );
+    const filteredReal = profiles.filter((p) => matchesPlace(p.country) && matchesGender(p.gender));
     const filteredDefaults = defaultProfiles.filter(
-      (dp) =>
-        matchesPlace(dp.country) &&
-        matchesGender(dp.gender) &&
-        !filteredReal.some((rp) => rp._id === dp._id)
+      (dp) => matchesPlace(dp.country) && matchesGender(dp.gender) && !filteredReal.some((rp) => rp._id === dp._id)
     );
-
     const combined = [...filteredReal, ...filteredDefaults];
     setShuffledAll(selectedPlace === "all" ? shuffleArray(combined) : combined);
   }, [selectedPlace, selectedGender, profiles]);
 
   const startIndex = currentPage * PROFILES_PER_PAGE;
   const displayed = shuffledAll.slice(startIndex, startIndex + PROFILES_PER_PAGE);
-  const padded = [
-    ...displayed,
-    ...Array(Math.max(0, PROFILES_PER_PAGE - displayed.length)).fill(null),
-  ];
+  const padded = [...displayed, ...Array(Math.max(0, PROFILES_PER_PAGE - displayed.length)).fill(null)];
   const hasMore = startIndex + PROFILES_PER_PAGE < shuffledAll.length;
   const hasPrev = currentPage > 0;
 
@@ -190,12 +188,11 @@ export default function HomePage() {
   const placeLabel = { all: "All", korea: "Korea", japan: "Japan", latin: "Latin" }[selectedPlace];
   const genderLabel = { all: "Gen", male: "Male", female: "Female" }[selectedGender];
 
-  if (loading)
-    return (
-      <p className="p-6 text-center text-gray-500 dark:text-gray-400 bg-gray-50 dark:bg-gray-900 min-h-screen">
-        Loading profiles…
-      </p>
-    );
+  if (loading) return (
+    <p className="p-6 text-center text-gray-500 dark:text-gray-400 bg-gray-50 dark:bg-gray-900 min-h-screen">
+      Loading profiles…
+    </p>
+  );
 
   const renderCard = (profile: Profile) => (
     <div
@@ -205,28 +202,27 @@ export default function HomePage() {
     >
       {/* IMAGE */}
       <div
-        className="bg-gray-200 dark:bg-gray-700 bg-cover bg-top w-full flex-shrink-0"
-        style={{
-          backgroundImage: `url(${profile.imageUrl || "/placeholder.jpg"})`,
-          height: "200px",
-        }}
-      />
+        className="bg-gray-200 dark:bg-gray-700 bg-cover bg-top w-full flex-shrink-0 relative"
+        style={{ backgroundImage: `url(${profile.imageUrl || "/placeholder.jpg"})`, height: "200px" }}
+      >
+        {/* BUSY BADGE */}
+        {profile.isBusy && (
+          <div className="absolute top-2 left-2 flex items-center gap-1 bg-red-500/90 backdrop-blur-sm text-white text-[10px] px-2 py-0.5 rounded-full font-semibold">
+            <span className="w-1.5 h-1.5 bg-white rounded-full animate-pulse" />
+            Busy
+          </div>
+        )}
+      </div>
 
       {/* INFO */}
       <div className="px-2 pt-2 pb-2 flex flex-col gap-1">
-        <p className="text-sm font-semibold text-center truncate text-gray-800 dark:text-gray-100">
-          {profile.name}
-        </p>
-        <p className="text-[10px] text-center text-gray-400 dark:text-gray-500 capitalize">
-          {profile.country || ""}
-        </p>
+        <p className="text-sm font-semibold text-center truncate text-gray-800 dark:text-gray-100">{profile.name}</p>
+        <p className="text-[10px] text-center text-gray-400 dark:text-gray-500 capitalize">{profile.country || ""}</p>
         <div className="flex gap-1.5 mt-1 w-full">
           <button
             onClick={(e) => handleConnect(e, profile._id)}
             className={`flex-1 text-white text-[11px] py-1.5 rounded font-medium transition-all active:scale-95 ${
-              requestedProfiles.has(profile._id)
-                ? "bg-green-500"
-                : "bg-pink-500 hover:bg-pink-600"
+              requestedProfiles.has(profile._id) ? "bg-green-500" : "bg-pink-500 hover:bg-pink-600"
             }`}
           >
             {requestedProfiles.has(profile._id) ? "Sent ✓" : "Connect"}
@@ -243,11 +239,7 @@ export default function HomePage() {
   );
 
   const renderEmpty = (idx: number) => (
-    <div
-      key={`empty-${idx}`}
-      className="rounded-lg bg-gray-100 dark:bg-gray-800"
-      style={{ height: "265px" }}
-    />
+    <div key={`empty-${idx}`} className="rounded-lg bg-gray-100 dark:bg-gray-800" style={{ height: "265px" }} />
   );
 
   return (
@@ -259,10 +251,7 @@ export default function HomePage() {
           <div className="py-3 sticky top-0 bg-gray-50 dark:bg-gray-900 z-10 transition-colors duration-300">
             <div className="flex items-center justify-between mb-2">
               <h1 className="text-xl font-bold text-pink-500">My Shine</h1>
-              <button
-                onClick={() => router.push("/chats")}
-                className="relative p-1.5 hover:bg-white dark:hover:bg-gray-800 rounded-full transition-colors"
-              >
+              <button onClick={() => router.push("/chats")} className="relative p-1.5 hover:bg-white dark:hover:bg-gray-800 rounded-full transition-colors">
                 <IoChatbubbleEllipsesOutline size={22} className="text-gray-700 dark:text-gray-300" />
                 {unreadCount > 0 && (
                   <div className="absolute -top-1 -right-1 min-w-[18px] h-[18px] bg-pink-500 text-white text-[10px] font-bold rounded-full flex items-center justify-center px-1">
@@ -283,8 +272,7 @@ export default function HomePage() {
                       : "bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 border-gray-200 dark:border-gray-600 shadow-sm"
                   }`}
                 >
-                  {placeLabel}
-                  <FiChevronDown size={11} />
+                  {placeLabel}<FiChevronDown size={11} />
                 </button>
                 {showPlaceDropdown && (
                   <div className="absolute top-9 left-0 w-36 bg-white dark:bg-gray-800 rounded-xl shadow-lg z-30 py-1 border border-gray-100 dark:border-gray-700">
@@ -294,17 +282,12 @@ export default function HomePage() {
                       { value: "japan", label: "🇯🇵 Japan" },
                       { value: "latin", label: "🌎 Latin Countries" },
                     ].map((opt) => (
-                      <button
-                        key={opt.value}
+                      <button key={opt.value}
                         onClick={() => { setSelectedPlace(opt.value as Place); setShowPlaceDropdown(false); }}
                         className={`w-full px-3 py-2 text-left text-xs hover:bg-pink-50 dark:hover:bg-gray-700 transition-colors ${
-                          selectedPlace === opt.value
-                            ? "text-pink-600 font-semibold bg-pink-50 dark:bg-gray-700"
-                            : "text-gray-700 dark:text-gray-300"
+                          selectedPlace === opt.value ? "text-pink-600 font-semibold bg-pink-50 dark:bg-gray-700" : "text-gray-700 dark:text-gray-300"
                         }`}
-                      >
-                        {opt.label}
-                      </button>
+                      >{opt.label}</button>
                     ))}
                   </div>
                 )}
@@ -320,8 +303,7 @@ export default function HomePage() {
                       : "bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 border-gray-200 dark:border-gray-600 shadow-sm"
                   }`}
                 >
-                  {genderLabel}
-                  <FiChevronDown size={11} />
+                  {genderLabel}<FiChevronDown size={11} />
                 </button>
                 {showGenderDropdown && (
                   <div className="absolute top-9 left-0 w-28 bg-white dark:bg-gray-800 rounded-xl shadow-lg z-30 py-1 border border-gray-100 dark:border-gray-700">
@@ -330,82 +312,58 @@ export default function HomePage() {
                       { value: "male",   label: "♂ Male" },
                       { value: "female", label: "♀ Female" },
                     ].map((opt) => (
-                      <button
-                        key={opt.value}
+                      <button key={opt.value}
                         onClick={() => { setSelectedGender(opt.value as Gender); setShowGenderDropdown(false); }}
                         className={`w-full px-3 py-2 text-left text-xs hover:bg-pink-50 dark:hover:bg-gray-700 transition-colors ${
-                          selectedGender === opt.value
-                            ? "text-pink-600 font-semibold bg-pink-50 dark:bg-gray-700"
-                            : "text-gray-700 dark:text-gray-300"
+                          selectedGender === opt.value ? "text-pink-600 font-semibold bg-pink-50 dark:bg-gray-700" : "text-gray-700 dark:text-gray-300"
                         }`}
-                      >
-                        {opt.label}
-                      </button>
+                      >{opt.label}</button>
                     ))}
                   </div>
                 )}
               </div>
 
               {/* TOUR */}
-              <button
-                onClick={() => router.push("/tour")}
-                className="px-3 py-1.5 rounded-full text-xs font-medium bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 border border-gray-200 dark:border-gray-600 shadow-sm hover:bg-pink-50 dark:hover:bg-gray-700 hover:text-pink-500 hover:border-pink-300 transition-all"
-              >
+              <button onClick={() => router.push("/tour")} className="px-3 py-1.5 rounded-full text-xs font-medium bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 border border-gray-200 dark:border-gray-600 shadow-sm hover:bg-pink-50 dark:hover:bg-gray-700 hover:text-pink-500 hover:border-pink-300 transition-all">
                 Tour
               </button>
             </div>
           </div>
 
-          {/* MOBILE layout: arrows float over grid */}
+          {/* MOBILE */}
           <div className="relative mt-2 sm:hidden">
             <div className="grid grid-cols-2 gap-2">
-              {padded.map((profile, idx) =>
-                profile ? renderCard(profile) : renderEmpty(idx)
-              )}
+              {padded.map((profile, idx) => profile ? renderCard(profile) : renderEmpty(idx))}
             </div>
             {hasPrev && (
-              <button
-                onClick={() => setCurrentPage((p) => p - 1)}
-                style={{ top: "50%", transform: "translate(-40%, -50%)" }}
-                className="absolute left-0 w-7 h-7 rounded-full bg-pink-500 text-white shadow-lg z-20 flex items-center justify-center hover:bg-pink-600 transition-all hover:scale-110 active:scale-95"
-              >
+              <button onClick={() => setCurrentPage((p) => p - 1)} style={{ top: "50%", transform: "translate(-40%, -50%)" }}
+                className="absolute left-0 w-7 h-7 rounded-full bg-pink-500 text-white shadow-lg z-20 flex items-center justify-center hover:bg-pink-600 transition-all hover:scale-110 active:scale-95">
                 <FiChevronLeft size={14} />
               </button>
             )}
             {hasMore && (
-              <button
-                onClick={() => setCurrentPage((p) => p + 1)}
-                style={{ top: "50%", transform: "translate(40%, -50%)" }}
-                className="absolute right-0 w-7 h-7 rounded-full bg-pink-500 text-white shadow-lg z-20 flex items-center justify-center hover:bg-pink-600 transition-all hover:scale-110 active:scale-95"
-              >
+              <button onClick={() => setCurrentPage((p) => p + 1)} style={{ top: "50%", transform: "translate(40%, -50%)" }}
+                className="absolute right-0 w-7 h-7 rounded-full bg-pink-500 text-white shadow-lg z-20 flex items-center justify-center hover:bg-pink-600 transition-all hover:scale-110 active:scale-95">
                 <FiChevronRight size={14} />
               </button>
             )}
           </div>
 
-          {/* DESKTOP layout: arrows beside grid */}
+          {/* DESKTOP */}
           <div className="hidden sm:flex mt-2 items-center gap-2">
             <div className="w-8 flex-shrink-0">
               {hasPrev && (
-                <button
-                  onClick={() => setCurrentPage((p) => p - 1)}
-                  className="w-8 h-8 rounded-full bg-pink-500 text-white shadow-lg flex items-center justify-center hover:bg-pink-600 transition-all hover:scale-110 active:scale-95"
-                >
+                <button onClick={() => setCurrentPage((p) => p - 1)} className="w-8 h-8 rounded-full bg-pink-500 text-white shadow-lg flex items-center justify-center hover:bg-pink-600 transition-all hover:scale-110 active:scale-95">
                   <FiChevronLeft size={16} />
                 </button>
               )}
             </div>
             <div className="flex-1 grid grid-cols-2 gap-2">
-              {padded.map((profile, idx) =>
-                profile ? renderCard(profile) : renderEmpty(idx)
-              )}
+              {padded.map((profile, idx) => profile ? renderCard(profile) : renderEmpty(idx))}
             </div>
             <div className="w-8 flex-shrink-0">
               {hasMore && (
-                <button
-                  onClick={() => setCurrentPage((p) => p + 1)}
-                  className="w-8 h-8 rounded-full bg-pink-500 text-white shadow-lg flex items-center justify-center hover:bg-pink-600 transition-all hover:scale-110 active:scale-95"
-                >
+                <button onClick={() => setCurrentPage((p) => p + 1)} className="w-8 h-8 rounded-full bg-pink-500 text-white shadow-lg flex items-center justify-center hover:bg-pink-600 transition-all hover:scale-110 active:scale-95">
                   <FiChevronRight size={16} />
                 </button>
               )}
@@ -414,7 +372,6 @@ export default function HomePage() {
 
         </div>
       </div>
-
       <BottomNav />
       <DebugPanel />
     </>

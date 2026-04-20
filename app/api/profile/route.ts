@@ -11,7 +11,6 @@ export async function POST(req: Request) {
       age,
       bio,
       gender,
-      country,
       isCameraVerified,
     } = body;
 
@@ -33,7 +32,6 @@ export async function POST(req: Request) {
       age,
       bio,
       gender,
-      country,
       isCameraVerified,
     };
 
