@@ -10,7 +10,6 @@ import {
 } from "react-icons/fi";
 import { useDarkMode } from "@/app/contexts/DarkModeContext";
 
-// IP country codes that are allowed to apply to homepage
 const HOMEPAGE_COUNTRY_CODES = ["JP", "KR", "BR", "CO", "VE", "AR"];
 
 export default function ProfilePage() {
@@ -184,7 +183,7 @@ export default function ProfilePage() {
           alert("Profile saved successfully!");
         } else {
           alert("Profile saved! Taking you to the homepage.");
-          router.replace("/");
+          router.replace("/home");
         }
       } else {
         alert(data.message || "Failed to save profile");

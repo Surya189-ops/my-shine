@@ -44,7 +44,6 @@ export default function LoginPage() {
       let userId = session.user.id;
 
       if (!userId) {
-        // Step 1: try lookup by email
         const lookupRes = await fetch(
           `/api/auth/user-by-email?email=${encodeURIComponent(session.user.email)}`
         );
@@ -53,7 +52,6 @@ export default function LoginPage() {
         if (lookupData.success && lookupData.userId) {
           userId = lookupData.userId;
         } else {
-          // Step 2: create user
           const createRes = await fetch("/api/auth/ensure-google-user", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
@@ -68,7 +66,6 @@ export default function LoginPage() {
           if (createData.success && createData.userId) {
             userId = createData.userId;
           } else {
-            // Show actual error for debugging
             setError(createData.message || "Failed to create account. Please try again.");
             googleLoginHandled.current = false;
             return;
@@ -76,7 +73,6 @@ export default function LoginPage() {
         }
       }
 
-      // Fetch profile
       const profileRes = await fetch(`/api/profile?userId=${userId}`);
       const profileData = await profileRes.json();
 
@@ -89,7 +85,7 @@ export default function LoginPage() {
           loggedIn: true,
           provider: "google",
         }));
-        router.push("/");
+        router.push("/home");
       } else {
         localStorage.setItem("myshine_user", JSON.stringify({
           id: userId,
@@ -153,7 +149,7 @@ export default function LoginPage() {
             email: data.user.email, name: profileData.profile.name,
             loggedIn: true, provider: "email",
           }));
-          router.push("/");
+          router.push("/home");
         } else {
           localStorage.setItem("myshine_user", JSON.stringify({
             id: userId, email: data.user.email, loggedIn: true, provider: "email",
@@ -185,7 +181,7 @@ export default function LoginPage() {
             email: data.user.email, name: profileData.profile.name,
             loggedIn: true, provider: "email",
           }));
-          router.push("/");
+          router.push("/home");
         } else {
           localStorage.setItem("myshine_user", JSON.stringify({
             id: userId, email: data.user.email, loggedIn: true, provider: "email",
@@ -214,7 +210,6 @@ export default function LoginPage() {
 
   const inputClass = "w-full px-4 py-3 border border-gray-200 dark:border-gray-600 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-pink-500 bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100 placeholder-gray-400 dark:placeholder-gray-500";
 
-  // Show spinner while Google is processing
   if (status === "loading" || (status === "authenticated" && !error)) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-pink-50 dark:bg-gray-900">
@@ -239,7 +234,6 @@ export default function LoginPage() {
           </div>
         )}
 
-        {/* HOME */}
         {step === "home" && (
           <div className="flex flex-col gap-3">
             <button
@@ -269,7 +263,6 @@ export default function LoginPage() {
           </div>
         )}
 
-        {/* SIGNUP */}
         {step === "signup-email" && (
           <div className="flex flex-col gap-3">
             <p className="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-1">Create your account</p>
@@ -287,7 +280,6 @@ export default function LoginPage() {
           </div>
         )}
 
-        {/* OTP */}
         {step === "signup-otp" && (
           <div className="flex flex-col gap-3">
             <p className="text-sm text-gray-600 dark:text-gray-400 text-center">
@@ -305,7 +297,6 @@ export default function LoginPage() {
           </div>
         )}
 
-        {/* LOGIN */}
         {step === "login-email" && (
           <div className="flex flex-col gap-3">
             <p className="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-1">Welcome back!</p>
@@ -318,7 +309,6 @@ export default function LoginPage() {
           </div>
         )}
 
-        {/* TERMS MODAL */}
         {showTerms && (
           <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 px-4">
             <div className="bg-white dark:bg-gray-800 p-6 rounded-2xl max-w-sm w-full">

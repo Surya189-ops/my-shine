@@ -1,379 +1,385 @@
-// app/page.tsx
 "use client";
 
-import { useEffect, useState, useRef } from "react";
 import { useRouter } from "next/navigation";
-import BottomNav from "./components/BottomNav";
-import { FiChevronDown, FiChevronRight, FiChevronLeft } from "react-icons/fi";
-import { IoChatbubbleEllipsesOutline } from "react-icons/io5";
-import DebugPanel from "./components/DebugPanel";
+import { useEffect, useRef, useState } from "react";
 
-type Gender = "male" | "female" | "all";
-type Place = "all" | "korea" | "japan" | "latin";
-
-const LATIN_COUNTRIES = ["brazil", "colombia", "venezuela", "argentina"];
-const PROFILES_PER_PAGE = 4;
-
-type Profile = {
-  _id: string;
-  name: string;
-  gender: string;
-  country?: string;
-  imageUrl?: string;
-  tier?: string;
-  isBusy?: boolean;
-};
-
-const isRealProfile = (profileId: any) => {
-  if (!profileId) return false;
-  return String(profileId).length === 24;
-};
-
-function shuffleArray<T>(arr: T[]): T[] {
-  const a = [...arr];
-  for (let i = a.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
-    [a[i], a[j]] = [a[j], a[i]];
-  }
-  return a;
-}
-
-const defaultProfiles: Profile[] = [
-  { _id: "d1",  name: "Gojoooo",       gender: "male",   country: "japan", imageUrl: "/japan-male-1.jpg" },
-  { _id: "d2",  name: "king_sukunaa",  gender: "male",   country: "japan", imageUrl: "/japan-male-2.jpg" },
-  { _id: "d3",  name: "mikeykun",      gender: "male",   country: "japan", imageUrl: "/japan-male-3.jpg" },
-  { _id: "d4",  name: "Ninja naruto",  gender: "male",   country: "japan", imageUrl: "/japan-male-4.jpg" },
-  { _id: "d5",  name: "mitusurii",     gender: "female", country: "japan", imageUrl: "/japan-female-1.jpg" },
-  { _id: "d6",  name: "cutie_Nezuko1", gender: "female", country: "japan", imageUrl: "/japan-female-2.jpg" },
-  { _id: "d7",  name: "henata_62",     gender: "female", country: "japan", imageUrl: "/japan-female-3.jpg" },
-  { _id: "d8",  name: "utahime009",    gender: "female", country: "japan", imageUrl: "/japan-female-4.jpg" },
-  { _id: "d9",  name: "SeoulSunrise",  gender: "male",   country: "korea", imageUrl: "/korea-male-1.jpg" },
-  { _id: "d10", name: "HanRiver_K",    gender: "male",   country: "korea", imageUrl: "/korea-male-2.jpg" },
-  { _id: "d11", name: "StarK_95",      gender: "male",   country: "korea", imageUrl: "/korea-male-3.jpg" },
-  { _id: "d12", name: "BlueSky_KR",    gender: "male",   country: "korea", imageUrl: "/korea-male-4.jpg" },
-  { _id: "d13", name: "MoonlitSeoul",  gender: "male",   country: "korea", imageUrl: "/korea-male-5.jpg" },
-  { _id: "d14", name: "UrbanWave_K",   gender: "male",   country: "korea", imageUrl: "/korea-male-6.jpg" },
-  { _id: "d15", name: "ChillKorean",   gender: "male",   country: "korea", imageUrl: "/korea-male-7.jpg" },
-  { _id: "d16", name: "WonheeKR",      gender: "male",   country: "korea", imageUrl: "/korea-male-8.jpg" },
-  { _id: "d17", name: "DanielK_99",    gender: "male",   country: "korea", imageUrl: "/korea-male-9.jpg" },
-  { _id: "d18", name: "NightOwl_KR",   gender: "male",   country: "korea", imageUrl: "/korea-male-10.jpg" },
-];
-
-export default function HomePage() {
+export default function LandingPage() {
   const router = useRouter();
-
-  const [selectedPlace, setSelectedPlace] = useState<Place>(() => {
-    if (typeof window !== "undefined") return (sessionStorage.getItem("filter_place") as Place) || "all";
-    return "all";
-  });
-  const [selectedGender, setSelectedGender] = useState<Gender>(() => {
-    if (typeof window !== "undefined") return (sessionStorage.getItem("filter_gender") as Gender) || "all";
-    return "all";
-  });
-
-  const [showPlaceDropdown, setShowPlaceDropdown] = useState(false);
-  const [showGenderDropdown, setShowGenderDropdown] = useState(false);
-  const [profiles, setProfiles] = useState<Profile[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [currentPage, setCurrentPage] = useState(0);
-  const [requestedProfiles, setRequestedProfiles] = useState<Set<string>>(new Set());
-  const [unreadCount, setUnreadCount] = useState(0);
-  const [shuffledAll, setShuffledAll] = useState<Profile[]>([]);
-
-  const placeRef = useRef<HTMLDivElement>(null);
-  const genderRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => { sessionStorage.setItem("filter_place", selectedPlace); }, [selectedPlace]);
-  useEffect(() => { sessionStorage.setItem("filter_gender", selectedGender); }, [selectedGender]);
+  const [scrolled, setScrolled] = useState(false);
+  const heroRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    const handleClickOutside = (e: MouseEvent) => {
-      if (placeRef.current && !placeRef.current.contains(e.target as Node)) setShowPlaceDropdown(false);
-      if (genderRef.current && !genderRef.current.contains(e.target as Node)) setShowGenderDropdown(false);
-    };
-    document.addEventListener("mousedown", handleClickOutside);
-    return () => document.removeEventListener("mousedown", handleClickOutside);
-  }, []);
-
-  useEffect(() => {
-    const userStr = localStorage.getItem("myshine_user");
-    if (!userStr) { router.replace("/login"); return; }
-    const user = JSON.parse(userStr);
-
-    fetch(`/api/profiles`)
-      .then((res) => res.json())
-      .then((data) => { if (data.success) setProfiles(data.profiles); setLoading(false); })
-      .catch(() => setLoading(false));
-
-    if (user.profileId) {
-      fetch(`/api/messages/unread-conversations?profileId=${user.profileId}`)
-        .then((res) => res.json())
-        .then((data) => { if (data.success) setUnreadCount(data.unreadConversationCount); })
-        .catch(console.error);
+    // If user is already logged in, redirect to home
+    const user = localStorage.getItem("myshine_user");
+    if (user) {
+      try {
+        const parsed = JSON.parse(user);
+        if (parsed.loggedIn) { router.replace("/home"); return; }
+      } catch {}
     }
+
+    const onScroll = () => setScrolled(window.scrollY > 40);
+    window.addEventListener("scroll", onScroll);
+    return () => window.removeEventListener("scroll", onScroll);
   }, [router]);
 
-  useEffect(() => {
-    const handleRefresh = () => {
-      const userStr = localStorage.getItem("myshine_user");
-      if (!userStr) return;
-      const user = JSON.parse(userStr);
-      if (!user.profileId) return;
-      fetch(`/api/messages/unread-conversations?profileId=${user.profileId}`)
-        .then((res) => res.json())
-        .then((data) => { if (data.success) setUnreadCount(data.unreadConversationCount); })
-        .catch(console.error);
-    };
-    window.addEventListener("refreshMessageBadge", handleRefresh);
-    return () => window.removeEventListener("refreshMessageBadge", handleRefresh);
-  }, []);
-
-  useEffect(() => {
-    setCurrentPage(0);
-    const matchesPlace = (country?: string) => {
-      if (selectedPlace === "all") return true;
-      if (selectedPlace === "korea") return country === "korea";
-      if (selectedPlace === "japan") return country === "japan";
-      if (selectedPlace === "latin") return LATIN_COUNTRIES.includes(country || "");
-      return true;
-    };
-    const matchesGender = (gender: string) => selectedGender === "all" ? true : gender === selectedGender;
-
-    const filteredReal = profiles.filter((p) => matchesPlace(p.country) && matchesGender(p.gender));
-    const filteredDefaults = defaultProfiles.filter(
-      (dp) => matchesPlace(dp.country) && matchesGender(dp.gender) && !filteredReal.some((rp) => rp._id === dp._id)
-    );
-    const combined = [...filteredReal, ...filteredDefaults];
-    setShuffledAll(selectedPlace === "all" ? shuffleArray(combined) : combined);
-  }, [selectedPlace, selectedGender, profiles]);
-
-  const startIndex = currentPage * PROFILES_PER_PAGE;
-  const displayed = shuffledAll.slice(startIndex, startIndex + PROFILES_PER_PAGE);
-  const padded = [...displayed, ...Array(Math.max(0, PROFILES_PER_PAGE - displayed.length)).fill(null)];
-  const hasMore = startIndex + PROFILES_PER_PAGE < shuffledAll.length;
-  const hasPrev = currentPage > 0;
-
-  const comingSoon = () => alert("Coming Soon! This profile will be available shortly. 🌟");
-
-  const handleConnect = async (e: React.MouseEvent, profileId: string) => {
-    e.stopPropagation();
-    if (!isRealProfile(profileId)) { comingSoon(); return; }
-    const userStr = localStorage.getItem("myshine_user");
-    if (!userStr) return alert("Please login first");
-    const user = JSON.parse(userStr);
-    if (!user.profileId) return alert("Complete your profile first");
-    try {
-      const res = await fetch("/api/connections/request", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ fromProfileId: user.profileId, toProfileId: profileId }),
-      });
-      const data = await res.json();
-      if (data.success) setRequestedProfiles((prev) => new Set(prev).add(profileId));
-      else alert(data.message || "Request already sent");
-    } catch { alert("Something went wrong"); }
-  };
-
-  const handleChat = (e: React.MouseEvent, profileId: string) => {
-    e.stopPropagation();
-    if (!isRealProfile(profileId)) { comingSoon(); return; }
-    router.push(`/chat/${profileId}`);
-  };
-
-  const handleProfileClick = (profileId: string) => {
-    if (!isRealProfile(profileId)) { comingSoon(); return; }
-    router.push(`/profile/${profileId}`);
-  };
-
-  const placeLabel = { all: "All", korea: "Korea", japan: "Japan", latin: "Latin" }[selectedPlace];
-  const genderLabel = { all: "Gen", male: "Male", female: "Female" }[selectedGender];
-
-  if (loading) return (
-    <p className="p-6 text-center text-gray-500 dark:text-gray-400 bg-gray-50 dark:bg-gray-900 min-h-screen">
-      Loading profiles…
-    </p>
-  );
-
-  const renderCard = (profile: Profile) => (
-    <div
-      key={profile._id}
-      onClick={() => handleProfileClick(profile._id)}
-      className="rounded-lg overflow-hidden bg-white dark:bg-gray-800 shadow-sm flex flex-col cursor-pointer hover:-translate-y-2 hover:shadow-xl transition-all duration-300"
-    >
-      {/* IMAGE */}
-      <div
-        className="bg-gray-200 dark:bg-gray-700 bg-cover bg-top w-full flex-shrink-0 relative"
-        style={{ backgroundImage: `url(${profile.imageUrl || "/placeholder.jpg"})`, height: "200px" }}
-      >
-        {/* BUSY BADGE */}
-        {profile.isBusy && (
-          <div className="absolute top-2 left-2 flex items-center gap-1 bg-red-500/90 backdrop-blur-sm text-white text-[10px] px-2 py-0.5 rounded-full font-semibold">
-            <span className="w-1.5 h-1.5 bg-white rounded-full animate-pulse" />
-            Busy
-          </div>
-        )}
-      </div>
-
-      {/* INFO */}
-      <div className="px-2 pt-2 pb-2 flex flex-col gap-1">
-        <p className="text-sm font-semibold text-center truncate text-gray-800 dark:text-gray-100">{profile.name}</p>
-        <p className="text-[10px] text-center text-gray-400 dark:text-gray-500 capitalize">{profile.country || ""}</p>
-        <div className="flex gap-1.5 mt-1 w-full">
-          <button
-            onClick={(e) => handleConnect(e, profile._id)}
-            className={`flex-1 text-white text-[11px] py-1.5 rounded font-medium transition-all active:scale-95 ${
-              requestedProfiles.has(profile._id) ? "bg-green-500" : "bg-pink-500 hover:bg-pink-600"
-            }`}
-          >
-            {requestedProfiles.has(profile._id) ? "Sent ✓" : "Connect"}
-          </button>
-          <button
-            onClick={(e) => handleChat(e, profile._id)}
-            className="flex-1 border border-pink-500 text-pink-500 text-[11px] py-1.5 rounded font-medium bg-transparent hover:bg-pink-50 dark:hover:bg-pink-900/20 transition-all active:scale-95"
-          >
-            Chat
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-
-  const renderEmpty = (idx: number) => (
-    <div key={`empty-${idx}`} className="rounded-lg bg-gray-100 dark:bg-gray-800" style={{ height: "265px" }} />
-  );
-
   return (
-    <>
-      <div className="min-h-screen bg-gray-50 dark:bg-gray-900 px-3 pb-20 transition-colors duration-300">
-        <div className="mx-auto max-w-[560px]">
+    <div className="min-h-screen bg-[#0a0a0f] text-white overflow-x-hidden">
 
-          {/* HEADER */}
-          <div className="py-3 sticky top-0 bg-gray-50 dark:bg-gray-900 z-10 transition-colors duration-300">
-            <div className="flex items-center justify-between mb-2">
-              <h1 className="text-xl font-bold text-pink-500">My Shine</h1>
-              <button onClick={() => router.push("/chats")} className="relative p-1.5 hover:bg-white dark:hover:bg-gray-800 rounded-full transition-colors">
-                <IoChatbubbleEllipsesOutline size={22} className="text-gray-700 dark:text-gray-300" />
-                {unreadCount > 0 && (
-                  <div className="absolute -top-1 -right-1 min-w-[18px] h-[18px] bg-pink-500 text-white text-[10px] font-bold rounded-full flex items-center justify-center px-1">
-                    {unreadCount > 9 ? "9+" : unreadCount}
-                  </div>
-                )}
-              </button>
-            </div>
+      <style jsx global>{`
+        @import url('https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,700;0,900;1,700&family=DM+Sans:wght@300;400;500&display=swap');
 
-            <div className="flex items-center justify-center gap-2">
-              {/* PLACE */}
-              <div className="relative" ref={placeRef}>
-                <button
-                  onClick={() => { setShowPlaceDropdown((p) => !p); setShowGenderDropdown(false); }}
-                  className={`flex items-center gap-1 px-3 py-1.5 rounded-full text-xs font-medium border transition-all ${
-                    selectedPlace !== "all"
-                      ? "bg-pink-500 text-white border-pink-500"
-                      : "bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 border-gray-200 dark:border-gray-600 shadow-sm"
-                  }`}
-                >
-                  {placeLabel}<FiChevronDown size={11} />
-                </button>
-                {showPlaceDropdown && (
-                  <div className="absolute top-9 left-0 w-36 bg-white dark:bg-gray-800 rounded-xl shadow-lg z-30 py-1 border border-gray-100 dark:border-gray-700">
-                    {[
-                      { value: "all",   label: "All" },
-                      { value: "korea", label: "🇰🇷 Korea" },
-                      { value: "japan", label: "🇯🇵 Japan" },
-                      { value: "latin", label: "🌎 Latin Countries" },
-                    ].map((opt) => (
-                      <button key={opt.value}
-                        onClick={() => { setSelectedPlace(opt.value as Place); setShowPlaceDropdown(false); }}
-                        className={`w-full px-3 py-2 text-left text-xs hover:bg-pink-50 dark:hover:bg-gray-700 transition-colors ${
-                          selectedPlace === opt.value ? "text-pink-600 font-semibold bg-pink-50 dark:bg-gray-700" : "text-gray-700 dark:text-gray-300"
-                        }`}
-                      >{opt.label}</button>
-                    ))}
-                  </div>
-                )}
-              </div>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
 
-              {/* GENDER */}
-              <div className="relative" ref={genderRef}>
-                <button
-                  onClick={() => { setShowGenderDropdown((p) => !p); setShowPlaceDropdown(false); }}
-                  className={`flex items-center gap-1 px-3 py-1.5 rounded-full text-xs font-medium border transition-all ${
-                    selectedGender !== "all"
-                      ? "bg-pink-500 text-white border-pink-500"
-                      : "bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 border-gray-200 dark:border-gray-600 shadow-sm"
-                  }`}
-                >
-                  {genderLabel}<FiChevronDown size={11} />
-                </button>
-                {showGenderDropdown && (
-                  <div className="absolute top-9 left-0 w-28 bg-white dark:bg-gray-800 rounded-xl shadow-lg z-30 py-1 border border-gray-100 dark:border-gray-700">
-                    {[
-                      { value: "all",    label: "All" },
-                      { value: "male",   label: "♂ Male" },
-                      { value: "female", label: "♀ Female" },
-                    ].map((opt) => (
-                      <button key={opt.value}
-                        onClick={() => { setSelectedGender(opt.value as Gender); setShowGenderDropdown(false); }}
-                        className={`w-full px-3 py-2 text-left text-xs hover:bg-pink-50 dark:hover:bg-gray-700 transition-colors ${
-                          selectedGender === opt.value ? "text-pink-600 font-semibold bg-pink-50 dark:bg-gray-700" : "text-gray-700 dark:text-gray-300"
-                        }`}
-                      >{opt.label}</button>
-                    ))}
-                  </div>
-                )}
-              </div>
+        .font-display { font-family: 'Playfair Display', serif; }
+        .font-body { font-family: 'DM Sans', sans-serif; }
 
-              {/* TOUR */}
-              <button onClick={() => router.push("/tour")} className="px-3 py-1.5 rounded-full text-xs font-medium bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 border border-gray-200 dark:border-gray-600 shadow-sm hover:bg-pink-50 dark:hover:bg-gray-700 hover:text-pink-500 hover:border-pink-300 transition-all">
-                Tour
-              </button>
-            </div>
+        @keyframes float {
+          0%, 100% { transform: translateY(0px) rotate(0deg); }
+          50% { transform: translateY(-20px) rotate(3deg); }
+        }
+        @keyframes floatReverse {
+          0%, 100% { transform: translateY(0px) rotate(0deg); }
+          50% { transform: translateY(20px) rotate(-3deg); }
+        }
+        @keyframes pulse-glow {
+          0%, 100% { box-shadow: 0 0 20px rgba(236,72,153,0.4); }
+          50% { box-shadow: 0 0 60px rgba(236,72,153,0.8), 0 0 100px rgba(236,72,153,0.3); }
+        }
+        @keyframes shimmer {
+          0% { background-position: -200% center; }
+          100% { background-position: 200% center; }
+        }
+        @keyframes fadeUp {
+          from { opacity: 0; transform: translateY(30px); }
+          to { opacity: 1; transform: translateY(0); }
+        }
+        @keyframes spin-slow {
+          from { transform: rotate(0deg); }
+          to { transform: rotate(360deg); }
+        }
+        @keyframes marquee {
+          from { transform: translateX(0); }
+          to { transform: translateX(-50%); }
+        }
+
+        .animate-float { animation: float 6s ease-in-out infinite; }
+        .animate-float-reverse { animation: floatReverse 8s ease-in-out infinite; }
+        .animate-pulse-glow { animation: pulse-glow 3s ease-in-out infinite; }
+        .animate-fade-up { animation: fadeUp 0.8s ease-out forwards; }
+        .animate-spin-slow { animation: spin-slow 20s linear infinite; }
+        .animate-marquee { animation: marquee 20s linear infinite; }
+
+        .shimmer-text {
+          background: linear-gradient(90deg, #fff 0%, #ec4899 30%, #fff 60%, #ec4899 90%, #fff 100%);
+          background-size: 200% auto;
+          -webkit-background-clip: text;
+          -webkit-text-fill-color: transparent;
+          animation: shimmer 4s linear infinite;
+        }
+
+        .glass {
+          background: rgba(255,255,255,0.04);
+          backdrop-filter: blur(20px);
+          border: 1px solid rgba(255,255,255,0.08);
+        }
+
+        .pink-glow {
+          background: radial-gradient(circle at center, rgba(236,72,153,0.15) 0%, transparent 70%);
+        }
+
+        .card-hover {
+          transition: transform 0.3s ease, border-color 0.3s ease;
+        }
+        .card-hover:hover {
+          transform: translateY(-8px);
+          border-color: rgba(236,72,153,0.4) !important;
+        }
+
+        .btn-primary {
+          background: linear-gradient(135deg, #ec4899, #be185d);
+          transition: all 0.3s ease;
+          position: relative;
+          overflow: hidden;
+        }
+        .btn-primary::before {
+          content: '';
+          position: absolute;
+          top: 0; left: -100%;
+          width: 100%; height: 100%;
+          background: linear-gradient(90deg, transparent, rgba(255,255,255,0.2), transparent);
+          transition: left 0.5s ease;
+        }
+        .btn-primary:hover::before { left: 100%; }
+        .btn-primary:hover { transform: scale(1.03); box-shadow: 0 20px 40px rgba(236,72,153,0.4); }
+
+        .orb {
+          position: absolute;
+          border-radius: 50%;
+          filter: blur(80px);
+          pointer-events: none;
+        }
+      `}</style>
+
+      {/* ── NAV ── */}
+      <nav className={`fixed top-0 left-0 right-0 z-50 transition-all duration-500 font-body ${scrolled ? "glass py-3" : "py-5"}`}>
+        <div className="max-w-6xl mx-auto px-6 flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <div className="w-8 h-8 rounded-full bg-gradient-to-br from-pink-400 to-pink-700 animate-pulse-glow" />
+            <span className="font-display text-xl font-bold text-white">My Shine</span>
+          </div>
+          <div className="flex items-center gap-3">
+            <button
+              onClick={() => router.push("/login")}
+              className="text-sm text-gray-300 hover:text-white transition-colors px-4 py-2"
+            >
+              Log In
+            </button>
+            <button
+              onClick={() => router.push("/login")}
+              className="btn-primary text-sm font-medium text-white px-5 py-2 rounded-full"
+            >
+              Get Started
+            </button>
+          </div>
+        </div>
+      </nav>
+
+      {/* ── HERO ── */}
+      <section ref={heroRef} className="relative min-h-screen flex items-center justify-center pt-20 overflow-hidden">
+
+        {/* Background orbs */}
+        <div className="orb w-[600px] h-[600px] bg-pink-600/20 top-[-200px] right-[-200px]" />
+        <div className="orb w-[400px] h-[400px] bg-purple-600/15 bottom-[-100px] left-[-100px]" />
+        <div className="orb w-[300px] h-[300px] bg-pink-400/10 top-[40%] left-[20%]" />
+
+        {/* Rotating ring */}
+        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[700px] h-[700px] rounded-full border border-pink-500/10 animate-spin-slow" />
+        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[500px] h-[500px] rounded-full border border-pink-500/5" style={{ animation: "spin-slow 30s linear infinite reverse" }} />
+
+        {/* Floating profile cards */}
+        <div className="absolute left-[5%] top-[30%] animate-float hidden md:block">
+          <div className="glass rounded-2xl p-3 w-36">
+            <div className="w-full h-20 rounded-xl bg-gradient-to-br from-pink-400/30 to-purple-500/30 mb-2 flex items-center justify-center text-2xl">🇯🇵</div>
+            <p className="text-xs text-white font-medium text-center">Yuki, Tokyo</p>
+            <div className="flex justify-center mt-1"><span className="text-[10px] text-pink-400">● Online</span></div>
+          </div>
+        </div>
+
+        <div className="absolute right-[5%] top-[25%] animate-float-reverse hidden md:block">
+          <div className="glass rounded-2xl p-3 w-36">
+            <div className="w-full h-20 rounded-xl bg-gradient-to-br from-orange-400/30 to-pink-500/30 mb-2 flex items-center justify-center text-2xl">🇰🇷</div>
+            <p className="text-xs text-white font-medium text-center">Mina, Seoul</p>
+            <div className="flex justify-center mt-1"><span className="text-[10px] text-pink-400">● Online</span></div>
+          </div>
+        </div>
+
+        <div className="absolute right-[8%] bottom-[25%] animate-float hidden md:block">
+          <div className="glass rounded-2xl p-3 w-36">
+            <div className="w-full h-20 rounded-xl bg-gradient-to-br from-green-400/30 to-teal-500/30 mb-2 flex items-center justify-center text-2xl">🌎</div>
+            <p className="text-xs text-white font-medium text-center">Valentina, Brazil</p>
+            <div className="flex justify-center mt-1"><span className="text-[10px] text-pink-400">● Online</span></div>
+          </div>
+        </div>
+
+        {/* Hero content */}
+        <div className="relative z-10 text-center px-6 max-w-4xl mx-auto">
+          <div className="inline-flex items-center gap-2 glass rounded-full px-4 py-2 mb-8 text-sm text-pink-300 font-body">
+            <span className="w-2 h-2 bg-pink-400 rounded-full animate-pulse" />
+            Connect with people from Japan, Korea & Latin America
           </div>
 
-          {/* MOBILE */}
-          <div className="relative mt-2 sm:hidden">
-            <div className="grid grid-cols-2 gap-2">
-              {padded.map((profile, idx) => profile ? renderCard(profile) : renderEmpty(idx))}
-            </div>
-            {hasPrev && (
-              <button onClick={() => setCurrentPage((p) => p - 1)} style={{ top: "50%", transform: "translate(-40%, -50%)" }}
-                className="absolute left-0 w-7 h-7 rounded-full bg-pink-500 text-white shadow-lg z-20 flex items-center justify-center hover:bg-pink-600 transition-all hover:scale-110 active:scale-95">
-                <FiChevronLeft size={14} />
-              </button>
-            )}
-            {hasMore && (
-              <button onClick={() => setCurrentPage((p) => p + 1)} style={{ top: "50%", transform: "translate(40%, -50%)" }}
-                className="absolute right-0 w-7 h-7 rounded-full bg-pink-500 text-white shadow-lg z-20 flex items-center justify-center hover:bg-pink-600 transition-all hover:scale-110 active:scale-95">
-                <FiChevronRight size={14} />
-              </button>
-            )}
+          <h1 className="font-display text-5xl md:text-7xl lg:text-8xl font-black leading-none mb-6">
+            <span className="block text-white">Find Your</span>
+            <span className="shimmer-text">Perfect Match</span>
+          </h1>
+
+          <p className="font-body text-gray-400 text-lg md:text-xl max-w-2xl mx-auto mb-10 leading-relaxed">
+            Connect with real people from Japan, Korea, and Latin America.
+            Chat, video call, and build meaningful relationships across borders.
+          </p>
+
+          <div className="flex flex-col sm:flex-row gap-4 justify-center items-center">
+            <button
+              onClick={() => router.push("/login")}
+              className="btn-primary font-body font-medium text-white text-base px-8 py-4 rounded-full w-full sm:w-auto"
+            >
+              Start Connecting — Free ✨
+            </button>
+            <button
+              onClick={() => router.push("/login")}
+              className="font-body text-gray-300 hover:text-white text-base px-8 py-4 rounded-full border border-white/10 hover:border-white/30 transition-all w-full sm:w-auto"
+            >
+              Book a Video Call →
+            </button>
           </div>
 
-          {/* DESKTOP */}
-          <div className="hidden sm:flex mt-2 items-center gap-2">
-            <div className="w-8 flex-shrink-0">
-              {hasPrev && (
-                <button onClick={() => setCurrentPage((p) => p - 1)} className="w-8 h-8 rounded-full bg-pink-500 text-white shadow-lg flex items-center justify-center hover:bg-pink-600 transition-all hover:scale-110 active:scale-95">
-                  <FiChevronLeft size={16} />
-                </button>
-              )}
-            </div>
-            <div className="flex-1 grid grid-cols-2 gap-2">
-              {padded.map((profile, idx) => profile ? renderCard(profile) : renderEmpty(idx))}
-            </div>
-            <div className="w-8 flex-shrink-0">
-              {hasMore && (
-                <button onClick={() => setCurrentPage((p) => p + 1)} className="w-8 h-8 rounded-full bg-pink-500 text-white shadow-lg flex items-center justify-center hover:bg-pink-600 transition-all hover:scale-110 active:scale-95">
-                  <FiChevronRight size={16} />
-                </button>
-              )}
-            </div>
-          </div>
+          <p className="font-body text-gray-600 text-sm mt-6">
+            No credit card required • Free to join • ₹199 for 10-min video calls
+          </p>
+        </div>
+      </section>
 
+      {/* ── MARQUEE ── */}
+      <div className="py-6 border-y border-white/5 overflow-hidden bg-pink-500/5">
+        <div className="flex animate-marquee whitespace-nowrap">
+          {["🇯🇵 Japan", "🇰🇷 Korea", "🌎 Brazil", "🌎 Colombia", "🌎 Argentina", "🌎 Venezuela",
+            "💬 Real Conversations", "📹 Video Calls", "💖 Meaningful Connections", "✨ Verified Profiles",
+            "🇯🇵 Japan", "🇰🇷 Korea", "🌎 Brazil", "🌎 Colombia", "🌎 Argentina", "🌎 Venezuela",
+            "💬 Real Conversations", "📹 Video Calls", "💖 Meaningful Connections", "✨ Verified Profiles"].map((item, i) => (
+            <span key={i} className="font-body text-sm text-pink-300/60 mx-8">{item}</span>
+          ))}
         </div>
       </div>
-      <BottomNav />
-      <DebugPanel />
-    </>
+
+      {/* ── HOW IT WORKS ── */}
+      <section className="py-24 px-6 relative">
+        <div className="orb w-[400px] h-[400px] bg-pink-500/10 top-0 left-1/2 -translate-x-1/2" />
+        <div className="max-w-5xl mx-auto relative z-10">
+          <div className="text-center mb-16">
+            <p className="font-body text-pink-400 text-sm uppercase tracking-widest mb-3">Simple & Easy</p>
+            <h2 className="font-display text-4xl md:text-5xl font-bold text-white">How It Works</h2>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            {[
+              { step: "01", icon: "👤", title: "Create Your Profile", desc: "Sign up free and tell us about yourself. Takes less than 2 minutes." },
+              { step: "02", icon: "🔍", title: "Browse & Connect", desc: "Explore profiles from Japan, Korea, and Latin America. Connect with who interests you." },
+              { step: "03", icon: "📹", title: "Book a Video Call", desc: "Book a private 10-minute video session for just ₹199. Real connections, real people." },
+            ].map((item) => (
+              <div key={item.step} className="glass rounded-2xl p-7 card-hover border border-white/5">
+                <div className="flex items-start justify-between mb-5">
+                  <span className="text-4xl">{item.icon}</span>
+                  <span className="font-display text-5xl font-black text-white/5">{item.step}</span>
+                </div>
+                <h3 className="font-display text-xl font-bold text-white mb-3">{item.title}</h3>
+                <p className="font-body text-gray-400 text-sm leading-relaxed">{item.desc}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* ── FEATURES ── */}
+      <section className="py-24 px-6">
+        <div className="max-w-5xl mx-auto">
+          <div className="text-center mb-16">
+            <p className="font-body text-pink-400 text-sm uppercase tracking-widest mb-3">Everything You Need</p>
+            <h2 className="font-display text-4xl md:text-5xl font-bold text-white">Why My Shine?</h2>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+            {[
+              { icon: "🌏", title: "Global Connections", desc: "Meet verified people from Japan, Korea, Brazil, Colombia, Venezuela & Argentina" },
+              { icon: "📹", title: "HD Video Calls", desc: "Crystal clear video sessions for just ₹199 per 10 minutes" },
+              { icon: "💬", title: "Real-time Chat", desc: "Message instantly with image sharing, view-once photos and read receipts" },
+              { icon: "✅", title: "Verified Profiles", desc: "All profiles from featured countries are manually verified by our team" },
+              { icon: "🔒", title: "Safe & Secure", desc: "Block, report, and stay in control. Your safety is our priority" },
+              { icon: "💰", title: "Earn Money", desc: "Profiles from Japan, Korea & Latin countries can earn by connecting with users" },
+            ].map((f) => (
+              <div key={f.title} className="glass rounded-2xl p-6 card-hover border border-white/5">
+                <div className="text-3xl mb-4">{f.icon}</div>
+                <h3 className="font-display text-lg font-bold text-white mb-2">{f.title}</h3>
+                <p className="font-body text-gray-400 text-sm leading-relaxed">{f.desc}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* ── PRICING ── */}
+      <section className="py-24 px-6 relative">
+        <div className="orb w-[500px] h-[500px] bg-pink-500/10 bottom-0 right-0" />
+        <div className="max-w-4xl mx-auto relative z-10">
+          <div className="text-center mb-16">
+            <p className="font-body text-pink-400 text-sm uppercase tracking-widest mb-3">Transparent Pricing</p>
+            <h2 className="font-display text-4xl md:text-5xl font-bold text-white">Simple & Affordable</h2>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            {/* Free */}
+            <div className="glass rounded-2xl p-8 border border-white/5">
+              <p className="font-body text-gray-400 text-sm mb-2">For everyone</p>
+              <h3 className="font-display text-3xl font-bold text-white mb-1">Free</h3>
+              <p className="font-body text-gray-500 text-sm mb-8">Forever, no credit card needed</p>
+              <ul className="space-y-3 mb-8">
+                {["Create your profile", "Browse all profiles", "Send connect requests", "Chat with matches", "Share photos & images"].map((f) => (
+                  <li key={f} className="flex items-center gap-3 font-body text-sm text-gray-300">
+                    <span className="text-pink-400">✓</span> {f}
+                  </li>
+                ))}
+              </ul>
+              <button onClick={() => router.push("/login")} className="w-full py-3 rounded-full border border-white/15 hover:border-pink-500/50 text-white font-body font-medium transition-all">
+                Get Started Free
+              </button>
+            </div>
+
+            {/* Video Call */}
+            <div className="relative rounded-2xl p-8 border border-pink-500/30 animate-pulse-glow" style={{ background: "linear-gradient(135deg, rgba(236,72,153,0.1), rgba(190,24,93,0.05))" }}>
+              <div className="absolute -top-3 left-1/2 -translate-x-1/2 bg-pink-500 text-white text-xs font-body font-semibold px-4 py-1 rounded-full">
+                Most Popular
+              </div>
+              <p className="font-body text-pink-300 text-sm mb-2">Premium experience</p>
+              <div className="flex items-end gap-2 mb-1">
+                <h3 className="font-display text-4xl font-bold text-white">₹199</h3>
+                <span className="font-body text-gray-400 text-sm mb-1">per session</span>
+              </div>
+              <p className="font-body text-gray-500 text-sm mb-8">10-minute private video call</p>
+              <ul className="space-y-3 mb-8">
+                {["Everything in Free", "HD video call session", "Private 1-on-1 experience", "Secure Razorpay payment", "Instant connection"].map((f) => (
+                  <li key={f} className="flex items-center gap-3 font-body text-sm text-gray-300">
+                    <span className="text-pink-400">✓</span> {f}
+                  </li>
+                ))}
+              </ul>
+              <button onClick={() => router.push("/login")} className="btn-primary w-full py-3 rounded-full text-white font-body font-medium">
+                Book a Video Call
+              </button>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* ── CTA ── */}
+      <section className="py-24 px-6">
+        <div className="max-w-3xl mx-auto text-center">
+          <div className="glass rounded-3xl p-12 border border-white/5 relative overflow-hidden">
+            <div className="orb w-64 h-64 bg-pink-500/20 top-[-50px] right-[-50px]" />
+            <div className="orb w-48 h-48 bg-purple-500/15 bottom-[-30px] left-[-30px]" />
+            <div className="relative z-10">
+              <h2 className="font-display text-4xl md:text-5xl font-bold text-white mb-4">
+                Ready to Shine? ✨
+              </h2>
+              <p className="font-body text-gray-400 text-lg mb-8 max-w-xl mx-auto">
+                Join thousands of users already connecting across borders. Free to start, no commitment required.
+              </p>
+              <button
+                onClick={() => router.push("/login")}
+                className="btn-primary font-body font-medium text-white text-base px-10 py-4 rounded-full"
+              >
+                Create Free Account →
+              </button>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* ── FOOTER ── */}
+      <footer className="border-t border-white/5 py-8 px-6">
+        <div className="max-w-6xl mx-auto flex flex-col md:flex-row items-center justify-between gap-4">
+          <div className="flex items-center gap-2">
+            <div className="w-6 h-6 rounded-full bg-gradient-to-br from-pink-400 to-pink-700" />
+            <span className="font-display text-lg font-bold text-white">My Shine</span>
+          </div>
+          <p className="font-body text-gray-600 text-sm">© 2025 My Shine. All rights reserved.</p>
+          <div className="flex items-center gap-6">
+            <button onClick={() => router.push("/login")} className="font-body text-gray-500 hover:text-white text-sm transition-colors">Login</button>
+            <button onClick={() => router.push("/login")} className="font-body text-gray-500 hover:text-white text-sm transition-colors">Sign Up</button>
+            <a href="mailto:support@myshine.site" className="font-body text-gray-500 hover:text-white text-sm transition-colors">Support</a>
+          </div>
+        </div>
+      </footer>
+
+    </div>
   );
 }
