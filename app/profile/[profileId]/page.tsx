@@ -79,13 +79,11 @@ export default function ProfileViewPage() {
   const [showMenu, setShowMenu] = useState(false);
   const [isSaved, setIsSaved] = useState(false);
 
-  /* -------- AUTH GUARD -------- */
   useEffect(() => {
     const user = localStorage.getItem("myshine_user");
     if (!user) router.replace("/login");
   }, [router]);
 
-  /* -------- FETCH PROFILE -------- */
   useEffect(() => {
     if (!profileId) return;
     const defaultProfile = defaultProfiles.find((p) => p._id === profileId);
@@ -96,10 +94,8 @@ export default function ProfileViewPage() {
       .catch(() => setLoading(false));
   }, [profileId]);
 
-  /* -------- MENU ACTIONS -------- */
   const handleSaveProfile = () => {
-    setIsSaved(!isSaved);
-    setShowMenu(false);
+    setIsSaved(!isSaved); setShowMenu(false);
     alert(isSaved ? "Profile unsaved" : "Profile saved! 🔖");
   };
 
@@ -108,61 +104,46 @@ export default function ProfileViewPage() {
     const profileUrl = `${window.location.origin}/profile/${profileId}`;
     if (navigator.share) {
       try { await navigator.share({ title: `${profile?.name} - My Shine`, text: `Check out ${profile?.name}'s profile on My Shine!`, url: profileUrl }); } catch {}
-    } else {
-      navigator.clipboard.writeText(profileUrl);
-      alert("Profile link copied to clipboard!");
-    }
+    } else { navigator.clipboard.writeText(profileUrl); alert("Profile link copied!"); }
   };
 
   const handleBlock = () => {
     setShowMenu(false);
-    if (confirm(`Are you sure you want to block ${profile?.name}?`)) {
-      alert("User blocked successfully");
-      router.push("/");
-    }
+    if (confirm(`Are you sure you want to block ${profile?.name}?`)) { alert("User blocked successfully"); router.push("/home"); }
   };
 
   const handleReport = () => {
     setShowMenu(false);
-    if (confirm(`Report ${profile?.name} for inappropriate behavior?`)) {
-      alert("Report submitted. We will review this profile.");
-    }
+    if (confirm(`Report ${profile?.name} for inappropriate behavior?`)) alert("Report submitted. We will review this profile.");
   };
 
-  /* -------- BOOK SESSION -------- */
-  const handleBookSession = () => {
-    if (profile?.isBusy) { alert(`${profile.name} is currently in another call. Please try again later.`); return; }
-    router.push(`/payment?profileId=${profile!._id}&requestId=direct`);
+  const handleVideoCall = () => {
+    if (profile?.isBusy) { alert(`${profile.name} is currently busy. Please try again later.`); return; }
+    router.push(`/chat/${profile!._id}`);
   };
 
-  // Shorthand helpers
-  const bg       = dark ? "bg-gray-900"  : "bg-gray-50";
-  const card     = dark ? "bg-gray-800"  : "bg-white";
-  const border   = dark ? "border-gray-700" : "border-gray-200";
-  const text     = dark ? "text-gray-100" : "text-gray-800";
-  const subtext  = dark ? "text-gray-400" : "text-gray-600";
-  const label    = dark ? "text-gray-500" : "text-gray-500";
+  const bg      = dark ? "bg-gray-900"  : "bg-gray-50";
+  const card    = dark ? "bg-gray-800"  : "bg-white";
+  const border  = dark ? "border-gray-700" : "border-gray-200";
+  const text    = dark ? "text-gray-100" : "text-gray-800";
+  const subtext = dark ? "text-gray-400" : "text-gray-600";
+  const label   = dark ? "text-gray-500" : "text-gray-500";
   const hoverBtn = dark ? "hover:bg-gray-700" : "hover:bg-gray-100";
-  const menuBg   = dark ? "bg-gray-800 border-gray-700" : "bg-white border-gray-200";
-  const menuHov  = dark ? "hover:bg-gray-700" : "hover:bg-gray-50";
-  const priceBg  = dark ? "bg-pink-900/30 border-pink-700" : "bg-pink-50 border-pink-200";
+  const menuBg  = dark ? "bg-gray-800 border-gray-700" : "bg-white border-gray-200";
+  const menuHov = dark ? "hover:bg-gray-700" : "hover:bg-gray-50";
 
-  if (loading) {
-    return (
-      <div className={`min-h-screen ${bg} flex items-center justify-center`}>
-        <p className={`text-sm ${subtext}`}>Loading profile...</p>
-      </div>
-    );
-  }
+  if (loading) return (
+    <div className={`min-h-screen ${bg} flex items-center justify-center`}>
+      <p className={`text-sm ${subtext}`}>Loading profile...</p>
+    </div>
+  );
 
-  if (!profile) {
-    return (
-      <div className={`min-h-screen ${bg} flex flex-col items-center justify-center gap-4`}>
-        <p className={`text-sm ${text}`}>Profile not found</p>
-        <button onClick={() => router.push("/")} className="px-6 py-2 bg-pink-500 text-white rounded-lg text-sm font-medium">Back to Home</button>
-      </div>
-    );
-  }
+  if (!profile) return (
+    <div className={`min-h-screen ${bg} flex flex-col items-center justify-center gap-4`}>
+      <p className={`text-sm ${text}`}>Profile not found</p>
+      <button onClick={() => router.push("/home")} className="px-6 py-2 bg-pink-500 text-white rounded-lg text-sm font-medium">Back to Home</button>
+    </div>
+  );
 
   return (
     <div className={`min-h-screen ${bg} pb-10 transition-colors duration-300`}>
@@ -181,16 +162,12 @@ export default function ProfileViewPage() {
 
           {/* IMAGE */}
           <div className={`relative h-72 ${dark ? "bg-gradient-to-br from-gray-700 to-gray-800" : "bg-gradient-to-br from-pink-100 to-purple-100"}`}>
-            {profile.imageUrl ? (
-              <img src={profile.imageUrl} alt={profile.name} className="w-full h-full object-cover" />
-            ) : (
-              <div className="w-full h-full flex items-center justify-center">
-                <div className="text-6xl text-gray-300">👤</div>
-              </div>
-            )}
+            {profile.imageUrl
+              ? <img src={profile.imageUrl} alt={profile.name} className="w-full h-full object-cover" />
+              : <div className="w-full h-full flex items-center justify-center"><div className="text-6xl text-gray-300">👤</div></div>
+            }
           </div>
 
-          {/* CONTENT */}
           <div className="p-6">
 
             {/* NAME + MENU */}
@@ -201,8 +178,7 @@ export default function ProfileViewPage() {
                     <h2 className={`text-2xl font-bold ${text}`}>{profile.name}</h2>
                     {profile.isBusy && (
                       <span className="flex items-center gap-1 bg-red-100 dark:bg-red-900/40 text-red-600 dark:text-red-400 text-[10px] px-2 py-1 rounded-full font-semibold">
-                        <span className="w-1.5 h-1.5 bg-red-500 rounded-full animate-pulse" />
-                        Busy
+                        <span className="w-1.5 h-1.5 bg-red-500 rounded-full animate-pulse" />Busy
                       </span>
                     )}
                   </div>
@@ -226,8 +202,7 @@ export default function ProfileViewPage() {
                           <span className={text}>{isSaved ? "Unsave Profile" : "Save Profile"}</span>
                         </button>
                         <button onClick={handleShare} className={`w-full px-4 py-3 text-left text-sm ${menuHov} flex items-center gap-3`}>
-                          <FiShare2 size={16} className={text} />
-                          <span className={text}>Share</span>
+                          <FiShare2 size={16} className={text} /><span className={text}>Share</span>
                         </button>
                         <div className={`border-t ${border} my-1`} />
                         <button onClick={handleBlock} className={`w-full px-4 py-3 text-left text-sm ${dark ? "hover:bg-red-900/30" : "hover:bg-red-50"} flex items-center gap-3 text-red-500`}>
@@ -251,20 +226,20 @@ export default function ProfileViewPage() {
               </div>
             )}
 
-            {/* PRICING — fixed ₹199 / 10 mins */}
+            {/* FREE BADGE */}
             <div className={`py-4 border-b ${border}`}>
-              <h3 className={`text-xs font-semibold ${label} uppercase tracking-wide mb-3`}>Video Call</h3>
-              <div className={`${priceBg} border-2 rounded-xl p-4 flex items-center justify-between`}>
+              <h3 className={`text-xs font-semibold ${label} uppercase tracking-wide mb-3`}>Connection</h3>
+              <div className={`${dark ? "bg-green-900/20 border-green-700" : "bg-green-50 border-green-200"} border-2 rounded-xl p-4 flex items-center justify-between`}>
                 <div>
-                  <p className={`text-sm font-semibold ${dark ? "text-gray-200" : "text-gray-700"}`}>10 minutes</p>
-                  <p className={`text-xs mt-0.5 ${subtext}`}>Video call session</p>
+                  <p className={`text-sm font-semibold ${dark ? "text-gray-200" : "text-gray-700"}`}>Chat & Video Call</p>
+                  <p className={`text-xs mt-0.5 ${subtext}`}>Connect for free anytime</p>
                 </div>
-                <p className="text-2xl font-bold text-pink-500">₹199</p>
+                <span className="text-xl font-bold text-green-500">FREE</span>
               </div>
               {profile.isBusy && (
                 <p className="text-xs text-red-500 text-center mt-2 flex items-center justify-center gap-1">
                   <span className="w-1.5 h-1.5 bg-red-500 rounded-full animate-pulse" />
-                  Currently in another call. Try again later.
+                  Currently busy. Try again later.
                 </p>
               )}
             </div>
@@ -285,7 +260,7 @@ export default function ProfileViewPage() {
               </button>
 
               <button
-                onClick={handleBookSession}
+                onClick={handleVideoCall}
                 disabled={profile.isBusy}
                 className={`flex-1 flex items-center justify-center gap-2 py-3 rounded-xl text-sm font-semibold transition-all active:scale-95 shadow-lg ${
                   profile.isBusy
@@ -294,7 +269,7 @@ export default function ProfileViewPage() {
                 }`}
               >
                 <FiVideo size={18} />
-                Book Session
+                Video Call
               </button>
             </div>
 
